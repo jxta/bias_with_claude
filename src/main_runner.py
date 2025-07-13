@@ -26,6 +26,9 @@ import time
 import multiprocessing as mp
 import json
 
+# SageMathの必要な関数をインポート
+from sage.all import *
+
 # 他のモジュールをインポート（同じディレクトリにあると仮定）
 try:
     from frobenius_calculator import (
