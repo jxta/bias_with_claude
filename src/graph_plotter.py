@@ -80,13 +80,14 @@ class BiasAnalyzer:
         self.case_data[case_id] = data
         return data
     
-    def compute_pi_half(self, primes_dict, max_x):
+    def compute_pi_half_sampled(self, primes_dict, max_x, sample_points=1000):
         """
-        π_{1/2}(x; σ) を計算
+        π_{1/2}(x; σ) を計算（サンプリング版）
         
         Args:
             primes_dict: {prime: frobenius_index} の辞書
             max_x: 最大値
+            sample_points: サンプリング点数
             
         Returns:
             (x_values, pi_half_values) のタプル
@@ -94,34 +95,55 @@ class BiasAnalyzer:
         # 素数をソート
         sorted_primes = sorted([p for p in primes_dict.keys() if p <= max_x])
         
-        x_values = list(range(2, max_x + 1))
-        pi_half_values = []
+        if not sorted_primes:
+            return [], []
         
-        pi_sum = 0
-        prime_idx = 0
+        # サンプリング点を対数的に分布
+        x_min = max(3, min(sorted_primes))
+        x_max = max_x
+        x_values = []
+        
+        # 対数スケールでサンプリング点を生成
+        log_min = float(log(x_min))
+        log_max = float(log(x_max))
+        
+        for i in range(sample_points):
+            log_x = log_min + (log_max - log_min) * i / (sample_points - 1)
+            x = int(exp(log_x))
+            if x not in x_values:
+                x_values.append(x)
+        
+        x_values.sort()
+        
+        pi_half_values = []
         
         for x in x_values:
             # x以下の素数について累積
-            while prime_idx < len(sorted_primes) and sorted_primes[prime_idx] <= x:
-                p = sorted_primes[prime_idx]
-                pi_sum += 1 / sqrt(p)
-                prime_idx += 1
+            pi_sum = 0
+            for p in sorted_primes:
+                if p <= x:
+                    pi_sum += 1 / sqrt(p)
+                else:
+                    break
             
             pi_half_values.append(float(pi_sum))
         
         return x_values, pi_half_values
     
-    def compute_pi_half_by_frobenius(self, frobenius_data, max_x):
+    def compute_pi_half_by_frobenius_sampled(self, frobenius_data, max_x, sample_points=1000):
         """
-        フロベニウス元ごとのπ_{1/2}(x; σ)を計算
+        フロベニウス元ごとのπ_{1/2}(x; σ)を計算（サンプリング版）
         
         Args:
             frobenius_data: フロベニウス元のデータ
             max_x: 最大値
+            sample_points: サンプリング点数
             
         Returns:
             各フロベニウス元ごとの辞書
         """
+        print(f"  データ処理中... (最大値: {max_x:,}, サンプル点数: {sample_points})")
+        
         # フロベニウス元ごとに素数を分類
         frobenius_primes = defaultdict(list)
         
@@ -137,38 +159,38 @@ class BiasAnalyzer:
             
             if frobenius_idx in frobenius_primes:
                 primes_dict = {p: frobenius_idx for p in frobenius_primes[frobenius_idx]}
-                x_vals, pi_vals = self.compute_pi_half(primes_dict, max_x)
+                x_vals, pi_vals = self.compute_pi_half_sampled(primes_dict, max_x, sample_points)
                 results[group_key] = (x_vals, pi_vals)
             else:
                 # 該当する素数がない場合
-                x_vals = list(range(2, max_x + 1))
-                pi_vals = [0.0] * len(x_vals)
-                results[group_key] = (x_vals, pi_vals)
+                results[group_key] = ([], [])
         
         return results
     
-    def compute_total_pi_half(self, frobenius_data, max_x):
+    def compute_total_pi_half_sampled(self, frobenius_data, max_x, sample_points=1000):
         """
-        全体のπ_{1/2}(x)を計算
+        全体のπ_{1/2}(x)を計算（サンプリング版）
         
         Args:
             frobenius_data: フロベニウス元のデータ
             max_x: 最大値
+            sample_points: サンプリング点数
             
         Returns:
             (x_values, pi_half_total) のタプル
         """
         all_primes = {int(p): 0 for p in frobenius_data.keys() if int(p) <= max_x}
-        return self.compute_pi_half(all_primes, max_x)
+        return self.compute_pi_half_sampled(all_primes, max_x, sample_points)
     
-    def plot_bias_graphs(self, case_id, max_x=10**5, output_dir="graphs"):
+    def plot_bias_graphs(self, case_id, max_x=10**5, output_dir="graphs", sample_points=1000):
         """
-        偏りのグラフを描画
+        偏りのグラフを描画（高速化版）
         
         Args:
             case_id: ケースID
             max_x: 最大値
             output_dir: 出力ディレクトリ
+            sample_points: サンプリング点数
         """
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -184,12 +206,14 @@ class BiasAnalyzer:
         print(f"Case {case_id}: グラフ作成開始 (m_ρ0 = {m_rho0})")
         
         # 全体のπ_{1/2}(x)を計算
-        x_total, pi_total = self.compute_total_pi_half(frobenius_data, max_x)
+        print(f"  全体のπ_{1/2}(x)を計算中...")
+        x_total, pi_total = self.compute_total_pi_half_sampled(frobenius_data, max_x, sample_points)
         
         # フロベニウス元ごとのπ_{1/2}(x; σ)を計算
-        pi_by_frobenius = self.compute_pi_half_by_frobenius(frobenius_data, max_x)
+        print(f"  フロベニウス元ごとの計算中...")
+        pi_by_frobenius = self.compute_pi_half_by_frobenius_sampled(frobenius_data, max_x, sample_points)
         
-        # 5つのグラフを作成 (青木さんのメモより)
+        # 5つのグラフを作成
         graphs_to_plot = [
             ('g0', 1, '1'),      # S1: identity
             ('g1', 1, '-1'),     # S2: -1
@@ -198,6 +222,7 @@ class BiasAnalyzer:
             ('g4', 2, 'k')       # S5: k (共役類サイズ2)
         ]
         
+        print(f"  グラフ描画中...")
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
         axes = axes.flatten()
         
@@ -207,47 +232,55 @@ class BiasAnalyzer:
             # π_{1/2}(x; σ)を取得
             x_sigma, pi_sigma = pi_by_frobenius[group_key]
             
-            # 偏りの計算: π_{1/2}(x) - (8/|c_σ|) * π_{1/2}(x; σ)
+            if not x_sigma:  # データがない場合
+                ax.text(0.5, 0.5, 'No data', ha='center', va='center', transform=ax.transAxes)
+                ax.set_title(f"Case {case_id}: S{idx+1} (σ = {label}, m_ρ₀ = {m_rho0})")
+                continue
+            
+            # 偏りの計算
             bias_coeff = self.bias_coefficients[m_rho0][group_key]
-            conjugacy_size = conj_size
             
             y_bias = []
             x_log_log = []
+            x_plot = []
             
-            for i, x in enumerate(x_sigma):
-                if i < len(pi_total) and x >= 3:  # log(log(x))が定義される範囲
-                    pi_total_val = pi_total[i] if i < len(pi_total) else 0
-                    pi_sigma_val = pi_sigma[i]
+            # 共通のx点でデータを補間
+            for x in x_sigma:
+                if x >= 3:  # log(log(x))が定義される範囲
+                    # 対応するpi_totalの値を補間で求める
+                    pi_total_val = np.interp(x, x_total, pi_total) if x_total else 0
+                    
+                    # pi_sigmaの値を取得
+                    pi_sigma_val = np.interp(x, x_sigma, pi_sigma)
                     
                     # 偏りの計算: π_{1/2}(x) - (8/|c_σ|) * π_{1/2}(x; σ)
-                    bias_val = pi_total_val - (8.0 / conjugacy_size) * pi_sigma_val
+                    bias_val = pi_total_val - (8.0 / conj_size) * pi_sigma_val
                     y_bias.append(bias_val)
                     
                     # 理論値: (M(σ) + m(σ)) * log(log(x))
                     log_log_x = float(log(log(x)))
                     theoretical_val = bias_coeff * log_log_x
                     x_log_log.append(theoretical_val)
-                else:
-                    y_bias.append(0)
-                    x_log_log.append(0)
+                    
+                    x_plot.append(x)
             
-            # グラフを描画
-            x_plot = [x for x in x_sigma if x >= 3]
-            y_bias_plot = y_bias[:len(x_plot)]
-            x_log_log_plot = x_log_log[:len(x_plot)]
+            if x_plot:  # データがある場合のみ描画
+                # 実際の偏り（点の数を減らして高速化）
+                step = max(1, len(x_plot) // 500)  # 最大500点まで
+                ax.scatter(x_plot[::step], y_bias[::step], 
+                          color="black", marker=".", s=1, alpha=0.6, label='Actual bias')
+                
+                # 理論値
+                ax.plot(x_plot, x_log_log, color="red", linewidth=2, 
+                       label=f'{bias_coeff} log(log(x))')
+                
+                ax.set_xscale("log")
+                ax.legend(fontsize=8)
             
-            # 実際の偏り
-            ax.scatter(x_plot, y_bias_plot, color="black", marker=".", s=0.5, alpha=0.6, label='Actual bias')
-            
-            # 理論値
-            ax.plot(x_plot, x_log_log_plot, color="red", linewidth=2, label=f'{bias_coeff} log(log(x))')
-            
-            ax.set_xscale("log")
             ax.set_xlabel("x")
-            ax.set_ylabel(f"π₁/₂(x) - {8//conjugacy_size}π₁/₂(x;{label})")
+            ax.set_ylabel(f"π₁/₂(x) - {8//conj_size}π₁/₂(x;{label})")
             ax.set_title(f"Case {case_id}: S{idx+1} (σ = {label}, m_ρ₀ = {m_rho0})")
             ax.grid(True, alpha=0.3)
-            ax.legend()
         
         # 6番目のサブプロットを削除
         fig.delaxes(axes[5])
@@ -256,88 +289,19 @@ class BiasAnalyzer:
         
         # グラフを保存
         output_filename = f"{output_dir}/case_{case_id:02d}_bias_graphs.png"
-        plt.savefig(output_filename, dpi=300, bbox_inches='tight')
+        print(f"  ファイル保存中...")
+        plt.savefig(output_filename, dpi=150, bbox_inches='tight')  # dpiを下げて高速化
+        plt.close()  # メモリ解放
         
         print(f"Case {case_id}: グラフを保存しました -> {output_filename}")
-        
-        # 個別のグラフも作成
-        self.plot_individual_graphs(case_id, max_x, output_dir)
     
-    def plot_individual_graphs(self, case_id, max_x, output_dir):
+    def analyze_all_cases(self, max_x=10**5, sample_points=1000):
         """
-        個別のグラフを作成
-        """
-        data = self.case_data[case_id]
-        m_rho0 = data['m_rho0']
-        frobenius_data = data['frobenius_elements']
-        
-        # 全体のπ_{1/2}(x)を計算
-        x_total, pi_total = self.compute_total_pi_half(frobenius_data, max_x)
-        
-        # フロベニウス元ごとのπ_{1/2}(x; σ)を計算
-        pi_by_frobenius = self.compute_pi_half_by_frobenius(frobenius_data, max_x)
-        
-        graphs_to_plot = [
-            ('g0', 1, '1'),      
-            ('g1', 1, '-1'),     
-            ('g2', 2, 'i'),      
-            ('g3', 2, 'j'),      
-            ('g4', 2, 'k')       
-        ]
-        
-        for idx, (group_key, conj_size, label) in enumerate(graphs_to_plot):
-            plt.figure(figsize=(10, 6))
-            
-            # データを準備
-            x_sigma, pi_sigma = pi_by_frobenius[group_key]
-            bias_coeff = self.bias_coefficients[m_rho0][group_key]
-            
-            y_bias = []
-            x_log_log = []
-            
-            for i, x in enumerate(x_sigma):
-                if i < len(pi_total) and x >= 3:
-                    pi_total_val = pi_total[i] if i < len(pi_total) else 0
-                    pi_sigma_val = pi_sigma[i]
-                    
-                    bias_val = pi_total_val - (8.0 / conj_size) * pi_sigma_val
-                    y_bias.append(bias_val)
-                    
-                    log_log_x = float(log(log(x)))
-                    theoretical_val = bias_coeff * log_log_x
-                    x_log_log.append(theoretical_val)
-                else:
-                    y_bias.append(0)
-                    x_log_log.append(0)
-            
-            x_plot = [x for x in x_sigma if x >= 3]
-            y_bias_plot = y_bias[:len(x_plot)]
-            x_log_log_plot = x_log_log[:len(x_plot)]
-            
-            # プロット
-            plt.scatter(x_plot, y_bias_plot, color="black", marker=".", s=0.3, alpha=0.7, label='Actual bias')
-            plt.plot(x_plot, x_log_log_plot, color="red", linewidth=2, label=f'{bias_coeff} log(log(x))')
-            
-            plt.xscale("log")
-            plt.xlabel("x", fontsize=12)
-            plt.ylabel(f"π₁/₂(x) - {8//conj_size}π₁/₂(x;{label})", fontsize=12)
-            plt.title(f"Case {case_id}: Prime Bias for σ = {label} (m_ρ₀ = {m_rho0})", fontsize=14)
-            plt.grid(True, alpha=0.3)
-            plt.legend(fontsize=10)
-            
-            # 個別保存
-            individual_filename = f"{output_dir}/case_{case_id:02d}_S{idx+1}_{label.replace('-','minus')}.png"
-            plt.savefig(individual_filename, dpi=300, bbox_inches='tight')
-            plt.close()
-        
-        print(f"Case {case_id}: 個別グラフも保存しました")
-    
-    def analyze_all_cases(self, max_x=10**5):
-        """
-        全ケースを解析してグラフを作成
+        全ケースを解析してグラフを作成（高速化版）
         
         Args:
             max_x: 最大値
+            sample_points: サンプリング点数
         """
         print("全ケースのグラフ作成を開始")
         print("=" * 50)
@@ -359,12 +323,14 @@ class BiasAnalyzer:
                     continue
                 
                 # グラフを作成
-                self.plot_bias_graphs(case_id, max_x, output_dir)
+                self.plot_bias_graphs(case_id, max_x, output_dir, sample_points)
                 
                 print(f"Case {case_id}: 完了")
                 
             except Exception as e:
                 print(f"Case {case_id}: エラーが発生しました -> {e}")
+                import traceback
+                traceback.print_exc()
                 continue
         
         print("\n" + "=" * 50)
@@ -384,11 +350,11 @@ class BiasAnalyzer:
         data = self.case_data[case_id]
         frobenius_data = data['frobenius_elements']
         
-        print(f"\nCase {case_id} 統計情報:")
+        print(f"\nCase {case_id} の結果:")
         print(f"多項式: {data['polynomial']}")
         print(f"判別式: {data['discriminant']}")
         print(f"m_ρ₀: {data['m_rho0']}")
-        print(f"計算した素数の個数: {len(frobenius_data)}")
+        print(f"計算した素数の数: {len(frobenius_data)}")
         
         # フロベニウス元の分布
         frobenius_count = defaultdict(int)
@@ -413,15 +379,17 @@ def main():
     # 解析器を初期化
     analyzer = BiasAnalyzer()
     
-    # 設定
+    # 設定（高速化のため値を調整）
     max_x = 10**5  # グラフの最大値
+    sample_points = 500  # サンプリング点数を減らして高速化
     
     print(f"設定:")
     print(f"  最大値: {max_x:,}")
+    print(f"  サンプル点数: {sample_points}")
     print()
     
     # 全ケースを処理
-    analyzer.analyze_all_cases(max_x)
+    analyzer.analyze_all_cases(max_x, sample_points)
     
     # 各ケースの統計情報を表示
     print("\n" + "=" * 50)
