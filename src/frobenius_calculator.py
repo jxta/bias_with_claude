@@ -7,6 +7,9 @@ import time
 import os
 from functools import partial
 
+# SageMathの必要な関数をインポート
+from sage.all import *
+
 # Omar論文の13ケースの定義多項式
 OMAR_POLYNOMIALS = [
     # Case 1
