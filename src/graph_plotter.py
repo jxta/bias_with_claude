@@ -7,6 +7,9 @@ import os
 from collections import defaultdict
 import matplotlib.ticker as ptick
 
+# SageMathの必要な関数をインポート
+from sage.all import *
+
 class BiasAnalyzer:
     def __init__(self, data_dir="frobenius_data"):
         """
