@@ -147,7 +147,7 @@ class FrobeniusCalculator:
     
     def fast_frobenius_element(self, p):
         """
-        高速化されたフロベニウス元の計算
+        フロベニウス元の計算（正しい実装版）
         
         Args:
             p: 素数
@@ -159,12 +159,72 @@ class FrobeniusCalculator:
             return None
             
         try:
-            # ルジャンドル記号による高速分類
-            # まず部分体での分解を調べる
-            legendre_symbols = self._compute_legendre_symbols(p)
+            # Case 1の場合の正しい判定方法を実装
+            if self.case_id == 1:
+                return self._frobenius_case1(p)
+            else:
+                # 他のケースは従来の方法（要修正）
+                return self._frobenius_general(p)
             
+        except Exception as e:
+            print(f"Error computing Frobenius element for p={p}: {e}")
+            return None
+    
+    def _frobenius_case1(self, p):
+        """
+        Case 1専用の正確なフロベニウス元計算
+        正しい多項式: x^8 - x^7 - 34*x^6 + 29*x^5 + 361*x^4 - 305*x^3 - 1090*x^2 + 1345*x - 395
+        """
+        try:
+            # SageMathのpolynomial ringを使用
+            R = PolynomialRing(QQ, 'x')
+            x = R.gen()
+            f = x**8 - x**7 - 34*x**6 + 29*x**5 + 361*x**4 - 305*x**3 - 1090*x**2 + 1345*x - 395
+            
+            # GF(p)に変換して因数分解
+            f_mod = f.change_ring(GF(p))
+            factors = f_mod.factor()
+            degrees = [fac[0].degree() for fac in factors]
+            
+            # 因数分解による判定
+            if degrees[0] == 1:
+                return 0  # g0
+            if degrees[0] == 2:
+                return 1  # g1
+            
+            # クロネッカー記号による判定
+            leg5 = kronecker_symbol(5, p)
+            leg21 = kronecker_symbol(21, p)
+            leg105 = kronecker_symbol(105, p)
+            triple = (leg5, leg21, leg105)
+            
+            # Case 1の正しいマッピング
+            class_map = {
+                (1, -1, -1): 4,   # g4
+                (-1, 1, -1): 3,   # g3
+                (-1, -1, 1): 2,   # g2
+            }
+            
+            result = class_map.get(triple, None)
+            if result is None:
+                print(f"Unknown triple {triple} for p={p}")
+            
+            return result
+            
+        except Exception as e:
+            print(f"Case 1 Frobenius error for p={p}: {e}")
+            return None
+    
+    def _frobenius_general(self, p):
+        """
+        一般的なフロベニウス元計算（従来の方法、要改善）
+        """
+        try:
             # mod p での因数分解による分類
             factorization_type = self._analyze_factorization_mod_p(p)
+            
+            # ルジャンドル記号による分類
+            legendre_symbols = self._compute_legendre_symbols(p)
             
             # 両方の情報を組み合わせてフロベニウス元を決定
             frobenius_index = self._determine_frobenius_element(legendre_symbols, factorization_type, p)
@@ -172,7 +232,7 @@ class FrobeniusCalculator:
             return frobenius_index
             
         except Exception as e:
-            print(f"Error computing Frobenius element for p={p}: {e}")
+            print(f"General Frobenius error for p={p}: {e}")
             return None
     
     def _compute_legendre_symbols(self, p):
@@ -181,11 +241,6 @@ class FrobeniusCalculator:
         """
         symbols = {}
         
-        # L の生成元の最小多項式の判別式
-        alpha = self.L.gen()
-        min_poly = alpha.minpoly()
-        
-        # 部分体の判別式の素因数について計算
         try:
             # 簡単化された計算: 定義多項式の係数を使用
             coeffs = self.h.coefficients(sparse=False)
@@ -227,10 +282,8 @@ class FrobeniusCalculator:
     
     def _determine_frobenius_element(self, legendre_symbols, max_degree, p):
         """
-        ルジャンドル記号と因数分解の情報からフロベニウス元を決定
+        ルジャンドル記号と因数分解の情報からフロベニウス元を決定（一般的な方法）
         """
-        # Omar論文の結果に基づく簡略化された分類
-        
         # 次数による粗い分類
         if max_degree == 1:
             return 0  # g0 (単位元)
