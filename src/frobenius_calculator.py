@@ -234,9 +234,9 @@ class FrobeniusCalculator:
         # 次数による粗い分類
         if max_degree == 1:
             return 0  # g0 (単位元)
-        elif max_degree == 4:
+        elif max_degree == 2:
             return 1  # g1 (-1)
-        else:  # max_degree == 2
+        else:  # max_degree == 4 or 8
             # ルジャンドル記号を使ってi, j, kを分類
             symbol_product = 1
             for key, value in legendre_symbols.items():
