@@ -47,9 +47,9 @@ def compute_frob_sage(p, L, G, disc):
         print(f"Error computing Frobenius for p={p}: {e}")
         return None
 
-def compute_kronecker_classification(p):
+def compute_comprehensive_classification(p):
     """
-    クロネッカー記号による分類
+    包括的な分類データを計算
     """
     # 因数分解パターン
     R = PolynomialRing(QQ, 'x')
@@ -61,6 +61,7 @@ def compute_kronecker_classification(p):
         factors = f_mod.factor()
         degrees = [fac[0].degree() for fac in factors]
         max_degree = max(degrees)
+        degree_pattern = tuple(sorted(degrees))
         
         # クロネッカー記号
         leg5 = kronecker_symbol(5, p)
@@ -68,20 +69,30 @@ def compute_kronecker_classification(p):
         leg105 = kronecker_symbol(105, p)
         triple = (leg5, leg21, leg105)
         
+        # 追加のクロネッカー記号（精度向上のため）
+        leg3 = kronecker_symbol(3, p)
+        leg7 = kronecker_symbol(7, p)
+        leg15 = kronecker_symbol(15, p)
+        
+        # p mod 8の情報
+        p_mod_8 = p % 8
+        
         return {
             'max_degree': max_degree,
+            'degree_pattern': degree_pattern,
             'kronecker_triple': triple,
-            'degrees_list': degrees
+            'extended_kronecker': (leg3, leg5, leg7, leg15, leg21, leg105),
+            'p_mod_8': p_mod_8
         }
     except Exception as e:
-        print(f"Error in Kronecker classification for p={p}: {e}")
+        print(f"Error in classification for p={p}: {e}")
         return None
 
-def generate_training_data(L, G, disc, max_prime=500):
+def generate_improved_training_data(L, G, disc, max_prime=500):
     """
-    正確なフロベニウス元と分類データの対応を生成
+    改良された訓練データ生成
     """
-    print(f"\n正確なフロベニウス元データを生成中 (最大素数: {max_prime})")
+    print(f"\n改良された訓練データを生成中 (最大素数: {max_prime})")
     
     training_data = []
     ramified_primes = set(prime_divisors(disc))
@@ -95,17 +106,19 @@ def generate_training_data(L, G, disc, max_prime=500):
         if true_frob is None:
             continue
             
-        # クロネッカー記号による分類
-        kronecker_data = compute_kronecker_classification(p)
-        if kronecker_data is None:
+        # 包括的な分類データ
+        classification_data = compute_comprehensive_classification(p)
+        if classification_data is None:
             continue
             
         training_data.append({
-            'prime': p,
-            'true_frobenius': true_frob,
-            'max_degree': kronecker_data['max_degree'],
-            'kronecker_triple': kronecker_data['kronecker_triple'],
-            'degrees_list': kronecker_data['degrees_list']
+            'prime': int(p),
+            'true_frobenius': int(true_frob),
+            'max_degree': int(classification_data['max_degree']),
+            'degree_pattern': classification_data['degree_pattern'],
+            'kronecker_triple': classification_data['kronecker_triple'],
+            'extended_kronecker': classification_data['extended_kronecker'],
+            'p_mod_8': int(classification_data['p_mod_8'])
         })
         
         if len(training_data) % 50 == 0:
@@ -114,66 +127,83 @@ def generate_training_data(L, G, disc, max_prime=500):
     print(f"総計: {len(training_data)} 個の訓練データを生成")
     return training_data
 
-def analyze_patterns(training_data):
+def analyze_improved_patterns(training_data):
     """
-    パターンを解析してマッピングを決定
+    改良されたパターン解析
     """
     print(f"\n" + "="*60)
-    print("パターン解析とマッピング決定")
+    print("改良されたパターン解析")
     print("="*60)
     
-    # 因数分解パターンによる分析
+    # 複数の分類方法を試行
     degree_patterns = defaultdict(lambda: defaultdict(int))
+    degree_pattern_detailed = defaultdict(lambda: defaultdict(int))
     kronecker_patterns = defaultdict(lambda: defaultdict(int))
+    mod8_patterns = defaultdict(lambda: defaultdict(int))
+    combined_patterns = defaultdict(lambda: defaultdict(int))
     
     for data in training_data:
-        p = data['prime']
         true_frob = data['true_frobenius']
         max_degree = data['max_degree']
-        triple = data['kronecker_triple']
+        degree_pattern = tuple(data['degree_pattern'])
+        triple = tuple(data['kronecker_triple'])
+        p_mod_8 = data['p_mod_8']
         
         degree_patterns[max_degree][true_frob] += 1
+        degree_pattern_detailed[degree_pattern][true_frob] += 1
         kronecker_patterns[triple][true_frob] += 1
+        mod8_patterns[p_mod_8][true_frob] += 1
+        
+        # 組み合わせパターン
+        combined_key = (max_degree, triple)
+        combined_patterns[combined_key][true_frob] += 1
     
-    print("1. 因数分解パターンによる分析:")
+    print("1. 因数分解最大次数による分析:")
     degree_mapping = {}
     for max_degree, frob_dist in degree_patterns.items():
-        print(f"   最大次数 {max_degree}:")
-        for frob_idx, count in sorted(frob_dist.items()):
-            print(f"     g{frob_idx}: {count} 回")
-        
-        # 最頻出のフロベニウス元を選択
-        if frob_dist:
-            most_common_frob = max(frob_dist.items(), key=lambda x: x[1])
-            degree_mapping[max_degree] = most_common_frob[0]
-            print(f"   -> 選択: 次数{max_degree} -> g{most_common_frob[0]}")
+        most_common = max(frob_dist.items(), key=lambda x: x[1])
+        degree_mapping[max_degree] = most_common[0]
+        accuracy = most_common[1] / sum(frob_dist.values()) * 100
+        print(f"   次数{max_degree}: g{most_common[0]} ({accuracy:.1f}%精度)")
     
-    print(f"\n2. クロネッカー記号パターンによる分析:")
+    print(f"\n2. 詳細な因数分解パターンによる分析:")
+    degree_pattern_mapping = {}
+    for pattern, frob_dist in degree_pattern_detailed.items():
+        most_common = max(frob_dist.items(), key=lambda x: x[1])
+        degree_pattern_mapping[pattern] = most_common[0]
+        accuracy = most_common[1] / sum(frob_dist.values()) * 100
+        print(f"   {pattern}: g{most_common[0]} ({accuracy:.1f}%精度)")
+    
+    print(f"\n3. クロネッカー記号による分析:")
     kronecker_mapping = {}
     for triple, frob_dist in kronecker_patterns.items():
-        print(f"   {triple}:")
-        for frob_idx, count in sorted(frob_dist.items()):
-            print(f"     g{frob_idx}: {count} 回")
-        
-        # 最頻出のフロベニウス元を選択
-        if frob_dist:
-            most_common_frob = max(frob_dist.items(), key=lambda x: x[1])
-            kronecker_mapping[triple] = most_common_frob[0]
-            print(f"   -> 選択: {triple} -> g{most_common_frob[0]}")
+        most_common = max(frob_dist.items(), key=lambda x: x[1])
+        kronecker_mapping[triple] = most_common[0]
+        accuracy = most_common[1] / sum(frob_dist.values()) * 100
+        print(f"   {triple}: g{most_common[0]} ({accuracy:.1f}%精度)")
     
-    return degree_mapping, kronecker_mapping
+    print(f"\n4. 組み合わせパターンによる分析:")
+    combined_mapping = {}
+    for combined_key, frob_dist in combined_patterns.items():
+        if sum(frob_dist.values()) >= 3:  # 十分なデータがある場合のみ
+            most_common = max(frob_dist.items(), key=lambda x: x[1])
+            combined_mapping[combined_key] = most_common[0]
+            accuracy = most_common[1] / sum(frob_dist.values()) * 100
+            print(f"   {combined_key}: g{most_common[0]} ({accuracy:.1f}%精度)")
+    
+    return degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping
 
-def generate_case2_function(degree_mapping, kronecker_mapping):
+def generate_optimized_case2_function(degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping):
     """
-    Case 2用の分類関数のコードを生成
+    最適化されたCase 2分類関数の生成
     """
     print(f"\n" + "="*60)
-    print("Case 2用分類関数の生成")
+    print("最適化されたCase 2分類関数の生成")
     print("="*60)
     
     function_code = '''def _frobenius_case2(self, p):
     """
-    Case 2専用の正確なフロベニウス元計算
+    Case 2専用の最適化されたフロベニウス元計算
     """
     try:
         # SageMathのpolynomial ringを使用
@@ -186,9 +216,47 @@ def generate_case2_function(degree_mapping, kronecker_mapping):
         factors = f_mod.factor()
         degrees = [fac[0].degree() for fac in factors]
         max_degree = max(degrees)
+        degree_pattern = tuple(sorted(degrees))
         
-        # 因数分解による判定'''
+        # クロネッカー記号
+        leg5 = kronecker_symbol(5, p)
+        leg21 = kronecker_symbol(21, p)
+        leg105 = kronecker_symbol(105, p)
+        triple = (leg5, leg21, leg105)
+        
+        # 高精度な組み合わせマッピング'''
     
+    if combined_mapping:
+        function_code += '''
+        combined_key = (max_degree, triple)
+        combined_map = {'''
+        for combined_key, frob_idx in sorted(combined_mapping.items()):
+            function_code += f'''
+            {combined_key}: {frob_idx},'''
+        function_code += '''
+        }
+        
+        if combined_key in combined_map:
+            return combined_map[combined_key]'''
+    
+    function_code += '''
+        
+        # 詳細な因数分解パターンによる判定'''
+    if degree_pattern_mapping:
+        function_code += '''
+        pattern_map = {'''
+        for pattern, frob_idx in sorted(degree_pattern_mapping.items()):
+            function_code += f'''
+            {pattern}: {frob_idx},'''
+        function_code += '''
+        }
+        
+        if degree_pattern in pattern_map:
+            return pattern_map[degree_pattern]'''
+    
+    function_code += '''
+        
+        # 基本的な最大次数による判定'''
     for max_degree, frob_idx in sorted(degree_mapping.items()):
         function_code += f'''
         if max_degree == {max_degree}:
@@ -196,25 +264,18 @@ def generate_case2_function(degree_mapping, kronecker_mapping):
     
     function_code += '''
         
-        # クロネッカー記号による詳細判定
-        leg5 = kronecker_symbol(5, p)
-        leg21 = kronecker_symbol(21, p)
-        leg105 = kronecker_symbol(105, p)
-        triple = (leg5, leg21, leg105)
-        
-        # Case 2の正確なマッピング
+        # クロネッカー記号による判定
         class_map = {'''
-    
     for triple, frob_idx in sorted(kronecker_mapping.items()):
         function_code += f'''
-            {triple}: {frob_idx},   # g{frob_idx}'''
+            {triple}: {frob_idx},'''
     
     function_code += '''
         }
         
         result = class_map.get(triple, None)
         if result is None:
-            print(f"Unknown triple {triple} for p={p}")
+            print(f"Unknown pattern for p={p}: max_degree={max_degree}, triple={triple}")
         
         return result
         
@@ -222,139 +283,152 @@ def generate_case2_function(degree_mapping, kronecker_mapping):
         print(f"Case 2 Frobenius error for p={p}: {e}")
         return None'''
     
-    print("生成された関数:")
+    print("生成された最適化関数:")
     print(function_code)
     
     return function_code
 
-def compare_with_case1(kronecker_mapping):
+def validate_optimized_mapping(training_data, degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping):
     """
-    Case 1との比較
-    """
-    print(f"\n" + "="*60)
-    print("Case 1との比較")
-    print("="*60)
-    
-    case1_mapping = {
-        (1, -1, -1): 4,   # g4
-        (-1, 1, -1): 3,   # g3
-        (-1, -1, 1): 2,   # g2
-    }
-    
-    print("Case 1のマッピング:")
-    for triple, frob_idx in case1_mapping.items():
-        print(f"  {triple} -> g{frob_idx}")
-    
-    print(f"\nCase 2のマッピング:")
-    for triple, frob_idx in sorted(kronecker_mapping.items()):
-        print(f"  {triple} -> g{frob_idx}")
-    
-    print(f"\n相違点:")
-    for triple in set(case1_mapping.keys()) | set(kronecker_mapping.keys()):
-        case1_frob = case1_mapping.get(triple, "なし")
-        case2_frob = kronecker_mapping.get(triple, "なし")
-        if case1_frob != case2_frob:
-            print(f"  {triple}: Case1=g{case1_frob}, Case2=g{case2_frob}")
-
-def validate_mapping(training_data, degree_mapping, kronecker_mapping):
-    """
-    生成されたマッピングの精度を検証
+    最適化されたマッピングの精度検証
     """
     print(f"\n" + "="*60)
-    print("マッピング精度の検証")
+    print("最適化されたマッピング精度の検証")
     print("="*60)
     
     correct_predictions = 0
     total_predictions = 0
+    errors = []
     
     for data in training_data:
         p = data['prime']
         true_frob = data['true_frobenius']
         max_degree = data['max_degree']
-        triple = data['kronecker_triple']
+        degree_pattern = tuple(data['degree_pattern'])
+        triple = tuple(data['kronecker_triple'])
         
-        # 因数分解による予測
+        # 最適化された予測ロジック
         predicted_frob = None
-        if max_degree in degree_mapping:
+        prediction_method = ""
+        
+        # 1. 組み合わせマッピングを最優先
+        combined_key = (max_degree, triple)
+        if combined_key in combined_mapping:
+            predicted_frob = combined_mapping[combined_key]
+            prediction_method = "combined"
+        
+        # 2. 詳細パターンマッピング
+        elif degree_pattern in degree_pattern_mapping:
+            predicted_frob = degree_pattern_mapping[degree_pattern]
+            prediction_method = "pattern"
+        
+        # 3. 基本的な次数マッピング
+        elif max_degree in degree_mapping:
             predicted_frob = degree_mapping[max_degree]
+            prediction_method = "degree"
+        
+        # 4. クロネッカー記号マッピング
         elif triple in kronecker_mapping:
             predicted_frob = kronecker_mapping[triple]
+            prediction_method = "kronecker"
         
         if predicted_frob is not None:
             total_predictions += 1
             if predicted_frob == true_frob:
                 correct_predictions += 1
             else:
-                if total_predictions <= 10:  # 最初の10個のエラーを表示
-                    print(f"  予測ミス: p={p}, 真値=g{true_frob}, 予測=g{predicted_frob}")
+                errors.append({
+                    'prime': p,
+                    'true': true_frob,
+                    'predicted': predicted_frob,
+                    'method': prediction_method
+                })
     
     accuracy = (correct_predictions / total_predictions) * 100 if total_predictions > 0 else 0
-    print(f"\n精度: {correct_predictions}/{total_predictions} = {accuracy:.2f}%")
+    print(f"\n最適化後の精度: {correct_predictions}/{total_predictions} = {accuracy:.2f}%")
+    
+    if errors and len(errors) <= 10:
+        print(f"\n予測ミス（最初の{len(errors)}件）:")
+        for error in errors:
+            print(f"  p={error['prime']}: 真値=g{error['true']}, 予測=g{error['predicted']} ({error['method']})")
     
     return accuracy
 
-def save_results(training_data, degree_mapping, kronecker_mapping, function_code):
+def save_improved_results(training_data, mappings, function_code, accuracy):
     """
-    結果を保存
+    改良された結果を保存（JSON型エラー修正版）
     """
+    degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping = mappings
+    
+    # SageMath型をPython型に変換
+    def convert_to_json_serializable(obj):
+        if hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes)):
+            if isinstance(obj, dict):
+                return {str(k): convert_to_json_serializable(v) for k, v in obj.items()}
+            else:
+                return [convert_to_json_serializable(item) for item in obj]
+        else:
+            return int(obj) if hasattr(obj, 'sage') else obj
+    
     results = {
         "case_id": 2,
         "polynomial": "x^8 + 315*x^6 + 34020*x^4 + 1488375*x^2 + 22325625",
         "training_data_size": len(training_data),
-        "degree_mapping": {str(k): int(v) for k, v in degree_mapping.items()},
-        "kronecker_mapping": {str(k): int(v) for k, v in kronecker_mapping.items()},
+        "accuracy": float(accuracy),
+        "degree_mapping": convert_to_json_serializable(degree_mapping),
+        "degree_pattern_mapping": convert_to_json_serializable(degree_pattern_mapping),
+        "kronecker_mapping": convert_to_json_serializable(kronecker_mapping),
+        "combined_mapping": convert_to_json_serializable(combined_mapping),
         "generated_function": function_code,
         "sample_training_data": [
             {
                 "prime": int(data['prime']),
                 "true_frobenius": int(data['true_frobenius']),
-                "kronecker_triple": data['kronecker_triple']
+                "kronecker_triple": list(data['kronecker_triple'])
             }
-            for data in training_data[:20]  # 最初の20個をサンプルとして保存
+            for data in training_data[:20]
         ]
     }
     
-    with open("case2_auto_mapping.json", 'w', encoding='utf-8') as f:
+    with open("case2_optimized_mapping.json", 'w', encoding='utf-8') as f:
         json.dump(results, f, indent=2, ensure_ascii=False)
     
-    print(f"\n結果を保存: case2_auto_mapping.json")
+    print(f"\n改良された結果を保存: case2_optimized_mapping.json")
 
 def main():
     """
     メイン実行関数
     """
-    print("Case 2 自動マッピング生成プログラム")
+    print("Case 2 改良版自動マッピング生成プログラム")
     print("="*60)
     
     # Case 2の設定
     L, G, disc = setup_case2()
     
-    # 訓練データ生成
-    training_data = generate_training_data(L, G, disc, max_prime=500)
+    # 改良された訓練データ生成
+    training_data = generate_improved_training_data(L, G, disc, max_prime=500)
     
     if len(training_data) == 0:
         print("エラー: 訓練データが生成されませんでした")
         return
     
-    # パターン解析
-    degree_mapping, kronecker_mapping = analyze_patterns(training_data)
+    # 改良されたパターン解析
+    mappings = analyze_improved_patterns(training_data)
+    degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping = mappings
     
-    # 関数生成
-    function_code = generate_case2_function(degree_mapping, kronecker_mapping)
-    
-    # Case 1との比較
-    compare_with_case1(kronecker_mapping)
+    # 最適化された関数生成
+    function_code = generate_optimized_case2_function(degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping)
     
     # 精度検証
-    accuracy = validate_mapping(training_data, degree_mapping, kronecker_mapping)
+    accuracy = validate_optimized_mapping(training_data, degree_mapping, degree_pattern_mapping, kronecker_mapping, combined_mapping)
     
     # 結果保存
-    save_results(training_data, degree_mapping, kronecker_mapping, function_code)
+    save_improved_results(training_data, mappings, function_code, accuracy)
     
     print(f"\n" + "="*60)
-    print("自動マッピング生成完了!")
-    print(f"精度: {accuracy:.2f}%")
-    print("次のステップ: 生成された関数をfrobenius_calculator.pyに組み込んでください")
+    print("改良版自動マッピング生成完了!")
+    print(f"最終精度: {accuracy:.2f}%")
+    print("JSONファイルが正常に保存されました")
 
 if __name__ == "__main__":
     main()
