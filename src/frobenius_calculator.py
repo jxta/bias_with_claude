@@ -266,20 +266,24 @@ class FrobeniusCalculator:
                 else:
                     return 4  # g4 (k)
 
-def compute_frobenius_batch(args):
+def compute_frobenius_batch(polynomial_str, case_id, prime_start, prime_end):
     """
-    並列処理用のバッチ計算関数
+    並列処理用のバッチ計算関数（SageMathオブジェクトを渡さない版）
     
     Args:
-        args: (calculator, prime_start, prime_end) のタプル
+        polynomial_str: 多項式の文字列
+        case_id: ケースID
+        prime_start: 開始素数
+        prime_end: 終了素数
         
     Returns:
         {prime: frobenius_index} の辞書
     """
-    calculator, prime_start, prime_end = args
+    # 各プロセスで新しい計算器を作成
+    calculator = FrobeniusCalculator(polynomial_str, case_id)
     results = {}
     
-    print(f"Processing primes from {prime_start} to {prime_end}")
+    print(f"Process {mp.current_process().name}: Processing primes from {prime_start} to {prime_end}")
     
     for p in prime_range(prime_start, prime_end + 1):
         frobenius_idx = calculator.fast_frobenius_element(p)
@@ -290,7 +294,7 @@ def compute_frobenius_batch(args):
 
 def compute_frobenius_elements_parallel(case_info, max_prime=10**6, num_processes=None):
     """
-    並列処理でフロベニウス元を計算
+    並列処理でフロベニウス元を計算（修正版）
     
     Args:
         case_info: ケース情報の辞書
@@ -305,9 +309,6 @@ def compute_frobenius_elements_parallel(case_info, max_prime=10**6, num_processe
     
     print(f"Case {case_info['id']}: 並列処理開始 (プロセス数: {num_processes})")
     print(f"多項式: {case_info['poly']}")
-    
-    # 計算器を初期化
-    calculator = FrobeniusCalculator(case_info['poly'], case_info['id'])
     
     # 素数範囲を分割
     primes = list(prime_range(max_prime + 1))
@@ -324,18 +325,56 @@ def compute_frobenius_elements_parallel(case_info, max_prime=10**6, num_processe
         if start_idx < len(primes):
             prime_start = primes[start_idx]
             prime_end = primes[min(end_idx, len(primes) - 1)]
-            args_list.append((calculator, prime_start, prime_end))
+            # SageMathオブジェクトではなく、文字列とパラメータだけを渡す
+            args_list.append((case_info['poly'], case_info['id'], prime_start, prime_end))
     
     # 並列処理実行
     start_time = time.time()
     
     with Pool(processes=num_processes) as pool:
-        batch_results = pool.map(compute_frobenius_batch, args_list)
+        batch_results = pool.starmap(compute_frobenius_batch, args_list)
     
     # 結果をマージ
     frobenius_data = {}
     for batch_result in batch_results:
         frobenius_data.update(batch_result)
+    
+    end_time = time.time()
+    print(f"Case {case_info['id']}: 計算完了 (時間: {end_time - start_time:.2f}秒)")
+    print(f"計算した素数の数: {len(frobenius_data)}")
+    
+    return frobenius_data
+
+def compute_frobenius_elements_sequential(case_info, max_prime=10**6):
+    """
+    シーケンシャル処理でフロベニウス元を計算（フォールバック用）
+    
+    Args:
+        case_info: ケース情報の辞書
+        max_prime: 計算する最大の素数
+        
+    Returns:
+        {prime: frobenius_index} の辞書
+    """
+    print(f"Case {case_info['id']}: シーケンシャル処理開始")
+    print(f"多項式: {case_info['poly']}")
+    
+    # 計算器を初期化
+    calculator = FrobeniusCalculator(case_info['poly'], case_info['id'])
+    
+    # 素数を順次処理
+    frobenius_data = {}
+    start_time = time.time()
+    
+    processed_count = 0
+    for p in prime_range(max_prime + 1):
+        frobenius_idx = calculator.fast_frobenius_element(p)
+        if frobenius_idx is not None:
+            frobenius_data[int(p)] = int(frobenius_idx)
+        
+        processed_count += 1
+        if processed_count % 1000 == 0:
+            print(f"  処理済み素数: {processed_count}")
     
     end_time = time.time()
     print(f"Case {case_info['id']}: 計算完了 (時間: {end_time - start_time:.2f}秒)")
@@ -390,11 +429,13 @@ def main():
     
     # 設定
     max_prime = 10**6  # 計算する最大の素数
-    num_processes = mp.cpu_count()  # 利用可能な全CPUコアを使用
+    num_processes = min(mp.cpu_count(), 4)  # 最大4プロセスに制限（安定性のため）
+    use_parallel = True  # 並列処理を使用するかどうか
     
     print(f"設定:")
     print(f"  最大素数: {max_prime:,}")
     print(f"  プロセス数: {num_processes}")
+    print(f"  並列処理: {use_parallel}")
     print()
     
     # 全ケースを処理
@@ -402,10 +443,22 @@ def main():
         try:
             print(f"Case {case_info['id']} 処理開始")
             
-            # フロベニウス元を並列計算
-            frobenius_data = compute_frobenius_elements_parallel(
-                case_info, max_prime, num_processes
-            )
+            # フロベニウス元を計算（並列またはシーケンシャル）
+            if use_parallel:
+                try:
+                    frobenius_data = compute_frobenius_elements_parallel(
+                        case_info, max_prime, num_processes
+                    )
+                except Exception as parallel_error:
+                    print(f"並列処理でエラーが発生: {parallel_error}")
+                    print("シーケンシャル処理にフォールバック")
+                    frobenius_data = compute_frobenius_elements_sequential(
+                        case_info, max_prime
+                    )
+            else:
+                frobenius_data = compute_frobenius_elements_sequential(
+                    case_info, max_prime
+                )
             
             # JSONファイルに保存
             save_frobenius_data(case_info, frobenius_data)
