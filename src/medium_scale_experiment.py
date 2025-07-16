@@ -314,10 +314,99 @@ def run_debug_test():
     
     return experiment, all_results
 
+def run_test_verification():
+    """テスト検証の実行 - medium-testで呼び出される関数"""
+    print("🧪 中規模テスト実行開始")
+    
+    try:
+        # 基本的なSageMath機能テスト
+        if not debug_sage_basics():
+            print("❌ SageMath基本機能テストに失敗")
+            return None, None
+        
+        # 軽量なテストケース実行
+        experiment = DebugExperiment()
+        results = experiment.test_simple_case()
+        
+        print("✅ 中規模テスト完了")
+        return experiment, results
+        
+    except Exception as e:
+        print(f"❌ テスト検証エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+def run_medium_scale_verification():
+    """中規模検証の実行 - mediumで呼び出される関数"""
+    print("🧪 中規模検証実行開始")
+    
+    try:
+        # 基本的なSageMath機能テスト
+        if not debug_sage_basics():
+            print("❌ SageMath基本機能テストに失敗")
+            return None, None
+        
+        # 全テストケース実行
+        experiment = DebugExperiment()
+        results = experiment.run_all_test_cases()
+        
+        print("✅ 中規模検証完了")
+        return experiment, results
+        
+    except Exception as e:
+        print(f"❌ 中規模検証エラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
+def run_single_case_test(case_index=0, x_max=1000):
+    """単一ケーステスト"""
+    print(f"🧪 単一ケーステスト実行: Case {case_index}")
+    
+    try:
+        if case_index >= len(SIMPLE_TEST_CASES):
+            print(f"❌ 無効なケースインデックス: {case_index}")
+            return None, None
+        
+        case = SIMPLE_TEST_CASES[case_index]
+        print(f"テストケース: {case['name']}")
+        
+        # 基本的なSageMath機能テスト
+        if not debug_sage_basics():
+            print("❌ SageMath基本機能テストに失敗")
+            return None, None
+        
+        # 単一ケースの詳細テスト
+        polynomial_str = case['polynomial']
+        test_primes = [3, 5, 7, 11, 13, 17, 19, 23, 29, 31]
+        
+        results = []
+        for p in test_primes:
+            frobenius = debug_polynomial_step_by_step(polynomial_str, p)
+            if frobenius is not None:
+                results.append([p, frobenius])
+        
+        print(f"✅ 単一ケーステスト完了: {len(results)} 成功")
+        return case, results
+        
+    except Exception as e:
+        print(f"❌ 単一ケーステストエラー: {e}")
+        import traceback
+        traceback.print_exc()
+        return None, None
+
 def check_dependencies():
     """依存関係チェック"""
     print("🔍 依存関係チェック")
-    return True
+    try:
+        # SageMath基本機能
+        debug_sage_basics()
+        print("✅ 依存関係チェック完了")
+        return True
+    except Exception as e:
+        print(f"❌ 依存関係チェックエラー: {e}")
+        return False
 
 if __name__ == "__main__":
     print("=" * 80)
@@ -326,6 +415,8 @@ if __name__ == "__main__":
     
     print("\n💡 実行方法:")
     print("   sage: experiment, results = run_debug_test()")
+    print("   sage: experiment, results = run_test_verification()")
+    print("   sage: experiment, results = run_medium_scale_verification()")
     
     print("\n🎯 このテストで何が分かるか:")
     print("   - SageMathの基本機能が動作するか")
