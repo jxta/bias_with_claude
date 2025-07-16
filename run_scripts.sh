@@ -200,31 +200,46 @@ run_experiment() {
     case $experiment_type in
         "test")
             print_info "軽量テスト実行中..."
-            sage -c "
+            sage << 'EOF'
 load('src/frobenius_calculator.py')
-experiment, results = run_quick_test()
-print('✅ 軽量テスト完了')
-"
+try:
+    experiment, results = run_quick_test()
+    print('✅ 軽量テスト完了')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             ;;
         
         "medium")
             print_info "中規模実験実行中 (10^6規模)..."
-            sage -c "
+            sage << 'EOF'
 load('src/medium_scale_experiment.py')
-check_dependencies()
-experiment, results = run_medium_scale_verification()
-print('✅ 中規模実験完了')
-"
+try:
+    check_dependencies()
+    experiment, results = run_medium_scale_verification()
+    print('✅ 中規模実験完了')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             ;;
         
         "medium-test")
             print_info "中規模テスト実行中 (10^4規模)..."
-            sage -c "
+            sage << 'EOF'
 load('src/medium_scale_experiment.py')
-check_dependencies()
-experiment, results = run_test_verification()
-print('✅ 中規模テスト完了')
-"
+try:
+    check_dependencies()
+    experiment, results = run_test_verification()
+    print('✅ 中規模テスト完了')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             ;;
         
         "large")
@@ -233,12 +248,17 @@ print('✅ 中規模テスト完了')
             read -p "続行しますか? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                sage -c "
+                sage << 'EOF'
 load('src/large_scale_experiment.py')
-check_large_scale_dependencies()
-experiment, results = run_large_scale_verification()
-print('✅ 大規模実験完了')
-"
+try:
+    check_large_scale_dependencies()
+    experiment, results = run_large_scale_verification()
+    print('✅ 大規模実験完了')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             else
                 print_info "大規模実験をキャンセルしました"
             fi
@@ -246,12 +266,17 @@ print('✅ 大規模実験完了')
         
         "large-test")
             print_info "大規模テスト実行中 (10^7規模)..."
-            sage -c "
+            sage << 'EOF'
 load('src/large_scale_experiment.py')
-check_large_scale_dependencies()
-experiment, results = run_large_scale_test()
-print('✅ 大規模テスト完了')
-"
+try:
+    check_large_scale_dependencies()
+    experiment, results = run_large_scale_test()
+    print('✅ 大規模テスト完了')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             ;;
         
         "ultra")
@@ -261,14 +286,19 @@ print('✅ 大規模テスト完了')
             read -p "続行しますか? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                sage -c "
+                sage << 'EOF'
 load('src/ultra_large_experiment.py')
-if check_ultra_large_dependencies():
-    experiment, results = run_ultra_large_verification()
-    print('✅ 超大規模実験完了')
-else:
-    print('❌ システム要件を満たしていません')
-"
+try:
+    if check_ultra_large_dependencies():
+        experiment, results = run_ultra_large_verification()
+        print('✅ 超大規模実験完了')
+    else:
+        print('❌ システム要件を満たしていません')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             else
                 print_info "超大規模実験をキャンセルしました"
             fi
@@ -276,14 +306,19 @@ else:
         
         "ultra-test")
             print_info "超大規模テスト実行中 (10^8規模)..."
-            sage -c "
+            sage << 'EOF'
 load('src/ultra_large_experiment.py')
-if check_ultra_large_dependencies():
-    experiment, results = run_ultra_large_test()
-    print('✅ 超大規模テスト完了')
-else:
-    print('❌ システム要件を満たしていません')
-"
+try:
+    if check_ultra_large_dependencies():
+        experiment, results = run_ultra_large_test()
+        print('✅ 超大規模テスト完了')
+    else:
+        print('❌ システム要件を満たしていません')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             ;;
         
         "single-case")
@@ -292,11 +327,16 @@ else:
                 exit 1
             fi
             print_info "単一ケーステスト実行中: Omar Case $((case_index + 1))"
-            sage -c "
+            sage << EOF
 load('src/medium_scale_experiment.py')
-experiment, result = run_single_case_test(case_index=$case_index, x_max=1000)
-print('✅ 単一ケーステスト完了')
-"
+try:
+    experiment, result = run_single_case_test(case_index=$case_index, x_max=1000)
+    print('✅ 単一ケーステスト完了')
+except Exception as e:
+    print(f'❌ エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
             ;;
         
         *)
@@ -321,11 +361,16 @@ run_visualization() {
     
     print_info "可視化対象: $latest_results"
     
-    sage -c "
+    sage << EOF
 load('src/chebyshev_bias_visualizer.py')
-visualizer = visualize_omar_results(results_dir='$latest_results')
-print('✅ 可視化完了')
-"
+try:
+    visualizer = visualize_omar_results(results_dir='$latest_results')
+    print('✅ 可視化完了')
+except Exception as e:
+    print(f'❌ 可視化エラー: {e}')
+    import traceback
+    traceback.print_exc()
+EOF
 }
 
 # パフォーマンス監視
