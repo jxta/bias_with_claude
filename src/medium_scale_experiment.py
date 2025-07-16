@@ -12,7 +12,7 @@ SageMathのprimes_aboveとartin_symbolを使用した正確な計算
 
 作成者: Claude & 青木美穂研究グループ
 日付: 2025/07/16
-更新: 完全な正確性を持つフロベニウス元計算版
+更新: 完全な正確性を持つフロベニウス元計算版（構文修正）
 """
 
 import json
@@ -42,19 +42,19 @@ except ImportError:
 QUATERNION_TEST_CASES = [
     {
         'name': 'Test Case 1 (x^2 - 2)',
-        'polynomial': 'x^2 - 2',
+        'polynomial': 'x**2 - 2',
         'coeffs': [-2, 0, 1],  # [a_0, a_1, a_2] for a_2*x^2 + a_1*x + a_0
         'description': '√2の最小多項式 - 二次体Q(√2)'
     },
     {
         'name': 'Test Case 2 (x^2 - 3)', 
-        'polynomial': 'x^2 - 3',
+        'polynomial': 'x**2 - 3',
         'coeffs': [-3, 0, 1],
         'description': '√3の最小多項式 - 二次体Q(√3)'
     },
     {
         'name': 'Test Case 3 (x^2 + 1)',
-        'polynomial': 'x^2 + 1',
+        'polynomial': 'x**2 + 1',
         'coeffs': [1, 0, 1],
         'description': 'iの最小多項式 - 円分体Q(i)'
     }
@@ -368,7 +368,7 @@ def debug_sage_basics():
         
         # 数体の作成テスト
         print("Step 2: 数体作成テスト")
-        f = x^2 - 2
+        f = x**2 - 2  # ** を使用
         K = NumberField(f, 'alpha')
         print(f"✅ 数体作成: {K}")
         
