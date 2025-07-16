@@ -8,10 +8,11 @@
 - 非常に詳細なデバッグ出力
 - ステップバイステップの計算検証
 - エラーの完全なトレース
+- 結果の適切な保存
 
 作成者: Claude & 青木美穂研究グループ
 日付: 2025/07/16
-更新: 完全デバッグ版
+更新: 結果保存機能強化版
 """
 
 import json
@@ -196,32 +197,6 @@ def debug_polynomial_step_by_step(polynomial_str, prime):
         traceback.print_exc()
         return None
 
-def create_polynomial_from_string(polynomial_str):
-    """文字列から多項式オブジェクトを安全に作成"""
-    try:
-        # 整数上の多項式リング
-        R = ZZ['x']
-        x = R.gen()
-        
-        # 文字列を評価して多項式を作成
-        # セキュリティのため、基本的な操作のみ許可
-        allowed_chars = set('x0123456789+-*() ')
-        if not all(c in allowed_chars for c in polynomial_str):
-            raise ValueError(f"不正な文字が含まれています: {polynomial_str}")
-        
-        # xを多項式リングの生成元で置換
-        f = eval(polynomial_str)
-        
-        # 多項式リングの要素に変換
-        if not isinstance(f, R.element_class):
-            f = R(f)
-        
-        return f
-        
-    except Exception as e:
-        print(f"❌ 多項式作成エラー: {e}")
-        return None
-
 class DebugExperiment:
     """デバッグ用実験クラス"""
     
@@ -236,6 +211,44 @@ class DebugExperiment:
         if not debug_sage_basics():
             print("❌ SageMath基本機能テストに失敗しました")
             return
+    
+    def save_results(self, results, experiment_name="debug_test"):
+        """結果を複数の形式で保存"""
+        try:
+            print(f"\n💾 結果保存中: {experiment_name}")
+            
+            # JSON形式で保存
+            json_file = os.path.join(self.output_dir, f'{experiment_name}_results.json')
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(results, f, ensure_ascii=False, indent=2)
+            print(f"✅ JSON保存: {json_file}")
+            
+            # Pickle形式で保存
+            pickle_file = os.path.join(self.output_dir, f'{experiment_name}_results.pkl')
+            with open(pickle_file, 'wb') as f:
+                pickle.dump(results, f)
+            print(f"✅ Pickle保存: {pickle_file}")
+            
+            # 人間が読みやすいテキスト形式でも保存
+            text_file = os.path.join(self.output_dir, f'{experiment_name}_summary.txt')
+            with open(text_file, 'w', encoding='utf-8') as f:
+                f.write(f"実験結果サマリー: {experiment_name}\n")
+                f.write(f"作成日時: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write("="*60 + "\n\n")
+                
+                for case_name, case_data in results.items():
+                    f.write(f"ケース: {case_name}\n")
+                    if isinstance(case_data, dict) and 'results' in case_data:
+                        f.write(f"  計算数: {len(case_data['results'])}\n")
+                        f.write(f"  結果: {case_data['results']}\n")
+                    f.write("\n")
+            
+            print(f"✅ テキスト保存: {text_file}")
+            
+        except Exception as e:
+            print(f"❌ 結果保存エラー: {e}")
+            import traceback
+            traceback.print_exc()
     
     def test_simple_case(self):
         """非常に簡単なケースをテスト"""
@@ -269,6 +282,22 @@ class DebugExperiment:
         if results:
             frobenius_dist = Counter(elem for _, elem in results)
             print(f"  分布: {dict(frobenius_dist)}")
+        
+        # 結果をより構造化して保存
+        case_result = {
+            case['name']: {
+                'polynomial': polynomial_str,
+                'test_primes': test_primes,
+                'results': results,
+                'successful': len(results),
+                'failed': len(test_primes) - len(results),
+                'success_rate': len(results) / len(test_primes) * 100,
+                'frobenius_distribution': dict(Counter(elem for _, elem in results)) if results else {}
+            }
+        }
+        
+        # 結果保存
+        self.save_results(case_result, "simple_case_test")
         
         return results
     
@@ -312,11 +341,17 @@ class DebugExperiment:
                 print(f"  分布: {dict(frobenius_dist)}")
             
             all_results[case['name']] = {
+                'polynomial': polynomial_str,
+                'test_primes': test_primes,
                 'results': results,
                 'successful': successful,
                 'failed': failed,
-                'success_rate': successful / len(test_primes) * 100
+                'success_rate': successful / len(test_primes) * 100,
+                'frobenius_distribution': dict(Counter(elem for _, elem in results)) if results else {}
             }
+        
+        # 結果保存
+        self.save_results(all_results, "all_test_cases")
         
         return all_results
 
@@ -330,7 +365,7 @@ def run_debug_test():
     print("\n" + "="*80)
     print("PHASE 1: 単一ケーステスト")
     print("="*80)
-    experiment.test_simple_case()
+    results1 = experiment.test_simple_case()
     
     # 全ケーステスト
     print("\n" + "="*80)
@@ -362,6 +397,14 @@ def run_debug_test():
         print("✅ フロベニウス元計算は正常に動作しています！")
     else:
         print("❌ フロベニウス元計算に問題があります")
+    
+    # 実験ディレクトリの情報を表示
+    print(f"\n📁 結果保存先: {experiment.output_dir}")
+    try:
+        files = os.listdir(experiment.output_dir)
+        print(f"📄 保存ファイル: {files}")
+    except:
+        pass
     
     return experiment, all_results
 
