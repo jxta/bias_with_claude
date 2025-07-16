@@ -1,268 +1,415 @@
 #!/bin/bash
 
-# =============================================================================
-# Quaternion拡大における素数の偏り計算プログラム
-# 実行用シェルスクリプト集
-# =============================================================================
+# 大規模・超大規模実験対応実行スクリプト
+# 青木美穂研究グループ - Quaternion拡大における素数の偏りの計算
+# 更新日: 2025/07/16
 
-# スクリプトのディレクトリを取得
+set -e
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# ログディレクトリを作成
-mkdir -p logs
-
-# =============================================================================
-# 1. 全ケース実行（推奨）
-# =============================================================================
-run_all() {
-    echo "=== 全ケースのフロベニウス元計算とグラフ描画を実行 ==="
-    echo "開始時刻: $(date)"
-    
-    sage src/main_runner.py --all --max-prime 1000000 2>&1 | tee logs/run_all_$(date +%Y%m%d_%H%M%S).log
-    
-    echo "終了時刻: $(date)"
-    echo "ログファイル: logs/run_all_*.log"
+# 色付きの出力関数
+print_header() {
+    echo -e "\n\033[1;34m$1\033[0m"
 }
 
-# =============================================================================
-# 2. 高速テスト実行（10^5素数まで）
-# =============================================================================
-run_test() {
-    echo "=== テスト実行（10^5素数まで） ==="
-    echo "開始時刻: $(date)"
-    
-    sage src/main_runner.py --all --max-prime 100000 2>&1 | tee logs/run_test_$(date +%Y%m%d_%H%M%S).log
-    
-    echo "終了時刻: $(date)"
-    echo "ログファイル: logs/run_test_*.log"
+print_success() {
+    echo -e "\033[1;32m✅ $1\033[0m"
 }
 
-# =============================================================================
-# 3. フロベニウス元計算のみ
-# =============================================================================
-run_frobenius_only() {
-    echo "=== フロベニウス元計算のみ実行 ==="
-    echo "開始時刻: $(date)"
-    
-    sage src/main_runner.py --compute-frobenius --max-prime 1000000 2>&1 | tee logs/run_frobenius_$(date +%Y%m%d_%H%M%S).log
-    
-    echo "終了時刻: $(date)"
-    echo "ログファイル: logs/run_frobenius_*.log"
+print_warning() {
+    echo -e "\033[1;33m⚠️  $1\033[0m"
 }
 
-# =============================================================================
-# 4. グラフ描画のみ
-# =============================================================================
-run_graphs_only() {
-    echo "=== グラフ描画のみ実行 ==="
-    echo "開始時刻: $(date)"
-    
-    sage src/main_runner.py --plot-graphs 2>&1 | tee logs/run_graphs_$(date +%Y%m%d_%H%M%S).log
-    
-    echo "終了時刻: $(date)"
-    echo "ログファイル: logs/run_graphs_*.log"
+print_error() {
+    echo -e "\033[1;31m❌ $1\033[0m"
 }
 
-# =============================================================================
-# 5. 特定ケース実行
-# =============================================================================
-run_single_case() {
-    if [ -z "$1" ]; then
-        echo "使用方法: run_single_case <ケース番号(1-13)>"
-        echo "例: run_single_case 1"
-        return 1
-    fi
-    
-    local case_id=$1
-    echo "=== Case $case_id のみ実行 ==="
-    echo "開始時刻: $(date)"
-    
-    sage src/main_runner.py --case $case_id --all --max-prime 1000000 2>&1 | tee logs/run_case_${case_id}_$(date +%Y%m%d_%H%M%S).log
-    
-    echo "終了時刻: $(date)"
-    echo "ログファイル: logs/run_case_${case_id}_*.log"
+print_info() {
+    echo -e "\033[1;36m📊 $1\033[0m"
 }
 
-# =============================================================================
-# 6. データファイル確認
-# =============================================================================
-check_data() {
-    echo "=== データファイル確認 ==="
-    sage src/main_runner.py --check-data
-}
-
-# =============================================================================
-# 7. クリーンアップ
-# =============================================================================
-cleanup() {
-    echo "=== クリーンアップ実行 ==="
-    read -p "データファイルを削除しますか？ (frobenius_data/) [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf frobenius_data/
-        echo "データファイルを削除しました"
-    fi
-    
-    read -p "グラフファイルを削除しますか？ (graphs/) [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf graphs/
-        echo "グラフファイルを削除しました"
-    fi
-    
-    read -p "ログファイルを削除しますか？ (logs/) [y/N]: " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        rm -rf logs/
-        echo "ログファイルを削除しました"
-    fi
-}
-
-# =============================================================================
-# 8. システム情報表示
-# =============================================================================
+# システム情報の表示
 show_system_info() {
-    echo "=== システム情報 ==="
-    echo "日時: $(date)"
-    echo "OS: $(uname -a)"
-    echo "CPU数: $(nproc)"
+    print_header "システム情報"
+    echo "CPU: $(nproc) コア"
     echo "メモリ: $(free -h | grep '^Mem:' | awk '{print $2}')"
-    echo "ディスク空き容量: $(df -h . | tail -1 | awk '{print $4}')"
-    echo
+    echo "ディスク空き: $(df -h . | tail -1 | awk '{print $4}')"
+    echo "OS: $(uname -s) $(uname -r)"
+    echo "SageMath: $(sage --version | head -1)"
+}
+
+# 依存関係チェック
+check_dependencies() {
+    print_header "依存関係チェック"
     
-    echo "=== SageMath情報 ==="
-    if command -v sage &> /dev/null; then
-        sage --version
-        echo "SageMath Python: $(sage --python --version 2>&1)"
-    else
-        echo "SageMathが見つかりません"
+    # SageMathの確認
+    if ! command -v sage &> /dev/null; then
+        print_error "SageMathがインストールされていません"
+        exit 1
     fi
-    echo
+    print_success "SageMath"
     
-    echo "=== ファイル確認 ==="
-    echo "必要なファイル:"
-    for file in src/frobenius_calculator.py src/graph_plotter.py src/main_runner.py; do
-        if [ -f "$file" ]; then
-            echo "  ✓ $file"
+    # Pythonライブラリの確認
+    python3 -c "import psutil, tqdm, numpy" 2>/dev/null || {
+        print_warning "一部のライブラリが不足しています"
+        echo "以下のコマンドでインストールしてください:"
+        echo "pip install psutil tqdm numpy"
+    }
+    
+    # ファイルの確認
+    required_files=(
+        "src/frobenius_calculator.py"
+        "src/medium_scale_experiment.py"
+        "src/large_scale_experiment.py"
+        "src/ultra_large_experiment.py"
+        "src/chebyshev_bias_visualizer.py"
+    )
+    
+    for file in "${required_files[@]}"; do
+        if [[ -f "$file" ]]; then
+            print_success "$file"
         else
-            echo "  ✗ $file (見つかりません)"
+            print_error "$file が見つかりません"
+            exit 1
         fi
     done
 }
 
-# =============================================================================
-# 9. 大規模計算実行（2×10^6素数まで）
-# =============================================================================
-run_large_scale() {
-    echo "=== 大規模計算実行（2×10^6素数まで） ==="
-    echo "警告: この計算には大量のメモリ（16GB以上推奨）と時間（数時間）が必要です"
-    read -p "続行しますか？ [y/N]: " -n 1 -r
-    echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "キャンセルしました"
-        return 0
-    fi
-    
-    echo "開始時刻: $(date)"
-    
-    sage src/main_runner.py --all --max-prime 2000000 --processes $(nproc) 2>&1 | tee logs/run_large_$(date +%Y%m%d_%H%M%S).log
-    
-    echo "終了時刻: $(date)"
-    echo "ログファイル: logs/run_large_*.log"
+# 使用方法の表示
+show_usage() {
+    cat << EOF
+🚀 大規模・超大規模実験対応実行スクリプト
+
+使用方法:
+  $0 [オプション]
+
+オプション:
+  test                  - 軽量テスト (10^5規模、約2-3分)
+  medium               - 中規模実験 (10^6規模、約1-2時間)
+  large                - 大規模実験 (10^8規模、約6-12時間)
+  ultra                - 超大規模実験 (10^9規模、約24-48時間)
+  
+  medium-test          - 中規模テスト (10^4規模、約3-5分)
+  large-test           - 大規模テスト (10^7規模、約30-60分)
+  ultra-test           - 超大規模テスト (10^8規模、約3-6時間)
+  
+  single-case [N]      - 単一ケーステスト (N=0-12)
+  check-deps           - 依存関係チェック
+  check-system         - システム要件チェック
+  cleanup              - 結果ファイルのクリーンアップ
+  
+  help                 - このヘルプを表示
+
+実験規模の比較:
+  📊 軽量テスト:     10^5 (78K素数)      - 数分
+  📊 中規模実験:     10^6 (78K素数)      - 1-2時間
+  📊 大規模実験:     10^8 (5.7M素数)     - 6-12時間
+  📊 超大規模実験:   10^9 (50M素数)      - 24-48時間
+
+システム要件:
+  📊 軽量テスト:     2GB RAM, 2コア
+  📊 中規模実験:     8GB RAM, 4コア
+  📊 大規模実験:     32GB RAM, 16コア
+  📊 超大規模実験:   64GB RAM, 32コア
+
+例:
+  $0 test              # 軽量テスト実行
+  $0 medium-test       # 中規模テスト実行
+  $0 large             # 大規模実験実行
+  $0 single-case 0     # Omar Case 1のテスト
+  $0 check-system      # システム要件チェック
+
+EOF
 }
 
-# =============================================================================
-# 10. 並列処理テスト
-# =============================================================================
-test_parallel() {
-    echo "=== 並列処理テスト ==="
-    echo "利用可能なCPU数: $(nproc)"
+# システム要件チェック
+check_system_requirements() {
+    print_header "システム要件チェック"
     
-    # 1プロセス
-    echo "1プロセスでCase 1を実行..."
-    time sage src/main_runner.py --case 1 --compute-frobenius --max-prime 100000 --processes 1 > /dev/null 2>&1
+    # メモリチェック
+    memory_gb=$(free -g | grep '^Mem:' | awk '{print $2}')
+    cpu_cores=$(nproc)
+    disk_gb=$(df -BG . | tail -1 | awk '{print $4}' | sed 's/G//')
     
-    # 全プロセス
-    echo "全プロセス($(nproc))でCase 1を実行..."
-    time sage src/main_runner.py --case 1 --compute-frobenius --max-prime 100000 --processes $(nproc) > /dev/null 2>&1
+    print_info "現在のシステム:"
+    echo "  CPU: ${cpu_cores} コア"
+    echo "  メモリ: ${memory_gb} GB"
+    echo "  ディスク空き: ${disk_gb} GB"
     
-    echo "並列処理テスト完了"
-}
-
-# =============================================================================
-# メイン関数
-# =============================================================================
-main() {
-    echo "Quaternion拡大における素数の偏り計算プログラム"
-    echo "=================================================="
+    # 各規模の要件チェック
     echo
+    print_info "実験規模別要件チェック:"
     
-    if [ $# -eq 0 ]; then
-        echo "使用方法:"
-        echo "  $0 [コマンド] [オプション]"
-        echo
-        echo "利用可能なコマンド:"
-        echo "  all                     - 全ケース実行（推奨）"
-        echo "  test                    - テスト実行（10^5素数まで）"
-        echo "  frobenius              - フロベニウス元計算のみ"
-        echo "  graphs                 - グラフ描画のみ"
-        echo "  case <番号>            - 特定ケース実行（1-13）"
-        echo "  check                  - データファイル確認"
-        echo "  cleanup                - ファイル削除"
-        echo "  info                   - システム情報表示"
-        echo "  large                  - 大規模計算（2×10^6素数）"
-        echo "  parallel               - 並列処理テスト"
-        echo
-        echo "例:"
-        echo "  $0 all                 # 全ケースを実行"
-        echo "  $0 test                # テスト実行"
-        echo "  $0 case 1              # Case 1のみ実行"
-        echo "  $0 check               # データ確認"
-        echo
-        return 0
+    # 軽量テスト
+    if [[ $memory_gb -ge 2 && $cpu_cores -ge 2 ]]; then
+        print_success "軽量テスト (10^5): 実行可能"
+    else
+        print_warning "軽量テスト (10^5): 要件不足"
     fi
     
-    case "$1" in
-        "all")
-            run_all
-            ;;
+    # 中規模実験
+    if [[ $memory_gb -ge 8 && $cpu_cores -ge 4 ]]; then
+        print_success "中規模実験 (10^6): 実行可能"
+    else
+        print_warning "中規模実験 (10^6): 要件不足"
+    fi
+    
+    # 大規模実験
+    if [[ $memory_gb -ge 32 && $cpu_cores -ge 16 ]]; then
+        print_success "大規模実験 (10^8): 実行可能"
+    else
+        print_warning "大規模実験 (10^8): 要件不足 (32GB RAM, 16コア推奨)"
+    fi
+    
+    # 超大規模実験
+    if [[ $memory_gb -ge 64 && $cpu_cores -ge 32 && $disk_gb -ge 100 ]]; then
+        print_success "超大規模実験 (10^9): 実行可能"
+    else
+        print_warning "超大規模実験 (10^9): 要件不足 (64GB RAM, 32コア, 100GB空き推奨)"
+    fi
+}
+
+# 結果ファイルのクリーンアップ
+cleanup_results() {
+    print_header "結果ファイルのクリーンアップ"
+    
+    # 確認
+    echo "以下のディレクトリが削除されます:"
+    ls -d *results* 2>/dev/null || echo "  (削除対象なし)"
+    
+    read -p "続行しますか? (y/N): " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        rm -rf *results* 2>/dev/null || true
+        rm -rf frobenius_data/ graphs/ logs/ 2>/dev/null || true
+        print_success "クリーンアップ完了"
+    else
+        print_info "クリーンアップをキャンセルしました"
+    fi
+}
+
+# 実験実行関数
+run_experiment() {
+    local experiment_type=$1
+    local case_index=$2
+    
+    print_header "実験実行: $experiment_type"
+    
+    case $experiment_type in
         "test")
-            run_test
+            print_info "軽量テスト実行中..."
+            sage -c "
+load('src/frobenius_calculator.py')
+experiment, results = run_quick_test()
+print('✅ 軽量テスト完了')
+"
             ;;
-        "frobenius")
-            run_frobenius_only
+        
+        "medium")
+            print_info "中規模実験実行中 (10^6規模)..."
+            sage -c "
+load('src/medium_scale_experiment.py')
+check_dependencies()
+experiment, results = run_medium_scale_verification()
+print('✅ 中規模実験完了')
+"
             ;;
-        "graphs")
-            run_graphs_only
+        
+        "medium-test")
+            print_info "中規模テスト実行中 (10^4規模)..."
+            sage -c "
+load('src/medium_scale_experiment.py')
+check_dependencies()
+experiment, results = run_test_verification()
+print('✅ 中規模テスト完了')
+"
             ;;
-        "case")
-            run_single_case "$2"
-            ;;
-        "check")
-            check_data
-            ;;
-        "cleanup")
-            cleanup
-            ;;
-        "info")
-            show_system_info
-            ;;
+        
         "large")
-            run_large_scale
+            print_info "大規模実験実行中 (10^8規模)..."
+            print_warning "この実験は6-12時間かかる可能性があります"
+            read -p "続行しますか? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sage -c "
+load('src/large_scale_experiment.py')
+check_large_scale_dependencies()
+experiment, results = run_large_scale_verification()
+print('✅ 大規模実験完了')
+"
+            else
+                print_info "大規模実験をキャンセルしました"
+            fi
             ;;
-        "parallel")
-            test_parallel
+        
+        "large-test")
+            print_info "大規模テスト実行中 (10^7規模)..."
+            sage -c "
+load('src/large_scale_experiment.py')
+check_large_scale_dependencies()
+experiment, results = run_large_scale_test()
+print('✅ 大規模テスト完了')
+"
             ;;
+        
+        "ultra")
+            print_info "超大規模実験実行中 (10^9規模)..."
+            print_warning "この実験は24-48時間かかる可能性があります"
+            print_warning "64GB RAM, 32コア, 100GB空き容量が必要です"
+            read -p "続行しますか? (y/N): " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                sage -c "
+load('src/ultra_large_experiment.py')
+if check_ultra_large_dependencies():
+    experiment, results = run_ultra_large_verification()
+    print('✅ 超大規模実験完了')
+else:
+    print('❌ システム要件を満たしていません')
+"
+            else
+                print_info "超大規模実験をキャンセルしました"
+            fi
+            ;;
+        
+        "ultra-test")
+            print_info "超大規模テスト実行中 (10^8規模)..."
+            sage -c "
+load('src/ultra_large_experiment.py')
+if check_ultra_large_dependencies():
+    experiment, results = run_ultra_large_test()
+    print('✅ 超大規模テスト完了')
+else:
+    print('❌ システム要件を満たしていません')
+"
+            ;;
+        
+        "single-case")
+            if [[ -z "$case_index" ]]; then
+                print_error "ケースインデックスを指定してください (0-12)"
+                exit 1
+            fi
+            print_info "単一ケーステスト実行中: Omar Case $((case_index + 1))"
+            sage -c "
+load('src/medium_scale_experiment.py')
+experiment, result = run_single_case_test(case_index=$case_index, x_max=1000)
+print('✅ 単一ケーステスト完了')
+"
+            ;;
+        
         *)
-            echo "エラー: 不明なコマンド '$1'"
-            echo "使用方法については '$0' を実行してください"
-            return 1
+            print_error "不明な実験タイプ: $experiment_type"
+            show_usage
+            exit 1
             ;;
     esac
 }
 
-# スクリプトが直接実行された場合
-if [ "${BASH_SOURCE[0]}" == "${0}" ]; then
-    main "$@"
-fi
+# 実験後の可視化
+run_visualization() {
+    print_header "結果の可視化"
+    
+    # 最新の結果ディレクトリを探す
+    latest_results=$(ls -td *results* 2>/dev/null | head -1)
+    
+    if [[ -z "$latest_results" ]]; then
+        print_warning "結果ディレクトリが見つかりません"
+        return
+    fi
+    
+    print_info "可視化対象: $latest_results"
+    
+    sage -c "
+load('src/chebyshev_bias_visualizer.py')
+visualizer = visualize_omar_results(results_dir='$latest_results')
+print('✅ 可視化完了')
+"
+}
+
+# パフォーマンス監視
+monitor_performance() {
+    print_header "パフォーマンス監視開始"
+    
+    # バックグラウンドで監視
+    (
+        while true; do
+            cpu_usage=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+            mem_usage=$(free | grep Mem | awk '{print ($3/$2) * 100.0}')
+            
+            echo "$(date '+%Y-%m-%d %H:%M:%S') CPU: ${cpu_usage}%, MEM: ${mem_usage}%" >> performance.log
+            sleep 30
+        done
+    ) &
+    
+    monitor_pid=$!
+    echo "パフォーマンス監視プロセス: $monitor_pid"
+    echo "ログファイル: performance.log"
+    
+    # 終了時にプロセスを停止
+    trap "kill $monitor_pid 2>/dev/null || true" EXIT
+}
+
+# メイン処理
+main() {
+    # 引数チェック
+    if [[ $# -eq 0 ]]; then
+        show_usage
+        exit 1
+    fi
+    
+    # 最初に基本チェック
+    check_dependencies
+    
+    case $1 in
+        "help"|"-h"|"--help")
+            show_usage
+            ;;
+        
+        "check-deps")
+            check_dependencies
+            ;;
+        
+        "check-system")
+            check_system_requirements
+            ;;
+        
+        "cleanup")
+            cleanup_results
+            ;;
+        
+        "test"|"medium"|"medium-test"|"large"|"large-test"|"ultra"|"ultra-test")
+            show_system_info
+            
+            # パフォーマンス監視を開始
+            monitor_performance
+            
+            # 実験実行
+            run_experiment $1
+            
+            # 可視化
+            run_visualization
+            
+            print_success "全処理完了"
+            ;;
+        
+        "single-case")
+            if [[ -n "$2" && "$2" =~ ^[0-9]+$ && "$2" -ge 0 && "$2" -le 12 ]]; then
+                run_experiment $1 $2
+            else
+                print_error "有効なケースインデックスを指定してください (0-12)"
+                exit 1
+            fi
+            ;;
+        
+        *)
+            print_error "不明なオプション: $1"
+            show_usage
+            exit 1
+            ;;
+    esac
+}
+
+# スクリプト実行
+main "$@"
