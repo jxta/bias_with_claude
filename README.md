@@ -160,6 +160,8 @@ medium_scale_results_YYYYMMDD_HHMMSS/
 
 ### 結果データの形式
 
+結果データは以下のような構造のJSONファイルとして保存されます：
+
 ```json
 {
   "experiment_info": {
