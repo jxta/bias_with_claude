@@ -38,7 +38,7 @@ show_system_info() {
     echo "ディスク空き: $(df -h . | tail -1 | awk '{print $4}')"
     echo "OS: $(uname -s) $(uname -r)"
     echo "SageMath: $(sage --version | head -1)"
-    echo "Python並列処理: $(python3 -c 'import multiprocessing; print(f\"{multiprocessing.cpu_count()} コア利用可能\")')"
+    echo "Python並列処理: $(python3 -c 'import multiprocessing; print(f"{multiprocessing.cpu_count()} コア利用可能")')"
     echo "推定メモリ使用量: $(($(nproc) / 2)) GB (140コア使用時: 70 GB)"
 }
 
@@ -64,6 +64,7 @@ check_dependencies() {
     # ファイルの確認
     required_files=(
         "src/medium_scale_experiment.py"
+        "src/large_scale_experiment.py"
         "src/chebyshev_bias_visualizer.py"
     )
     
@@ -226,18 +227,28 @@ except Exception as e:
         "large")
             print_info "大規模実験実行中（1M素数）..."
             print_warning "この実験は約1時間かかります"
+            print_info "真の大規模実験システムを使用します"
             read -p "続行しますか? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 run_sage_script "
-load('src/medium_scale_experiment.py')
+# 真の大規模実験システムを使用
+load('src/large_scale_experiment.py')
 try:
-    experiment, results = run_large_scale_verification()  # 1M素数
+    print('🚀 真の大規模実験システム開始...')
+    experiment, results = run_large_scale_verification(x_max=1000000, num_workers=None, case_indices=[0, 1, 2])
     print('✅ 大規模実験完了')
 except Exception as e:
     print(f'❌ エラー: {e}')
-    import traceback
-    traceback.print_exc()
+    print('🔄 フォールバックモードに切り替え...')
+    load('src/medium_scale_experiment.py')
+    try:
+        experiment, results = run_large_scale_verification()
+        print('✅ フォールバック大規模実験完了')
+    except Exception as e2:
+        print(f'❌ フォールバックエラー: {e2}')
+        import traceback
+        traceback.print_exc()
 "
             else
                 print_info "大規模実験をキャンセルしました"
@@ -252,14 +263,23 @@ except Exception as e:
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 run_sage_script "
-load('src/medium_scale_experiment.py')
+# 超大規模実験システムを使用
+load('src/large_scale_experiment.py')
 try:
-    experiment, results = run_high_performance_test(max_prime=10000000)
+    print('🚀 超大規模実験システム開始...')
+    experiment, results = run_large_scale_verification(x_max=10000000, num_workers=None, case_indices=None)
     print('✅ 超大規模実験完了')
 except Exception as e:
     print(f'❌ エラー: {e}')
-    import traceback
-    traceback.print_exc()
+    print('🔄 フォールバックモードに切り替え...')
+    load('src/medium_scale_experiment.py')
+    try:
+        experiment, results = run_high_performance_test(max_prime=10000000)
+        print('✅ フォールバック超大規模実験完了')
+    except Exception as e2:
+        print(f'❌ フォールバックエラー: {e2}')
+        import traceback
+        traceback.print_exc()
 "
             else
                 print_info "超大規模実験をキャンセルしました"
