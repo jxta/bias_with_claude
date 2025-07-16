@@ -1,331 +1,380 @@
-        # 2. 実行時間
-        bars2 = ax2.bar(case_names, execution_times, color='lightcoral', alpha=0.7)
-        ax2.set_title('Execution Time by Case')
-        ax2.set_ylabel('Execution Time (minutes)')
+#!/usr/bin/env sage
+
+"""
+Chebyshevバイアス可視化ツール
+Omar's 13 Cases結果の総合的な可視化
+
+作成者: Claude & 青木美穂研究グループ
+日付: 2025/07/16
+"""
+
+import json
+import os
+import pickle
+from datetime import datetime
+import matplotlib
+matplotlib.use('Agg')  # GUI不要のバックエンド
+import matplotlib.pyplot as plt
+import numpy as np
+from collections import Counter
+
+class ChebyshevBiasVisualizer:
+    """Chebyshevバイアス結果の可視化クラス"""
+    
+    def __init__(self, results_dir=None, json_file=None, pickle_file=None):
+        """
+        初期化
+        
+        Parameters:
+        - results_dir: 結果ディレクトリパス
+        - json_file: JSONファイルパス（直接指定）
+        - pickle_file: Pickleファイルパス（直接指定）
+        """
+        self.results = {}
+        self.figure_dir = None
+        
+        # データの読み込み
+        if results_dir:
+            self.load_from_directory(results_dir)
+        elif json_file:
+            self.load_from_json(json_file)
+        elif pickle_file:
+            self.load_from_pickle(pickle_file)
+        else:
+            print("⚠️  データソースが指定されていません")
+    
+    def load_from_directory(self, results_dir):
+        """ディレクトリから結果を読み込み"""
+        print(f"📁 ディレクトリから読み込み: {results_dir}")
+        
+        if not os.path.exists(results_dir):
+            print(f"❌ ディレクトリが存在しません: {results_dir}")
+            return
+        
+        self.figure_dir = os.path.join(results_dir, "figures")
+        os.makedirs(self.figure_dir, exist_ok=True)
+        
+        # JSONファイルを探す
+        json_files = [f for f in os.listdir(results_dir) if f.endswith('.json')]
+        
+        if json_files:
+            json_path = os.path.join(results_dir, json_files[0])
+            self.load_from_json(json_path)
+        else:
+            # Pickleファイルを探す
+            pickle_files = [f for f in os.listdir(results_dir) if f.endswith('.pkl')]
+            if pickle_files:
+                pickle_path = os.path.join(results_dir, pickle_files[0])
+                self.load_from_pickle(pickle_path)
+            else:
+                print("❌ JSONまたはPickleファイルが見つかりません")
+    
+    def load_from_json(self, json_file):
+        """JSONファイルから読み込み"""
+        try:
+            with open(json_file, 'r', encoding='utf-8') as f:
+                self.results = json.load(f)
+            print(f"✅ JSON読み込み成功: {len(self.results)} ケース")
+            
+            if not self.figure_dir:
+                self.figure_dir = os.path.join(os.path.dirname(json_file), "figures")
+                os.makedirs(self.figure_dir, exist_ok=True)
+                
+        except Exception as e:
+            print(f"❌ JSON読み込みエラー: {e}")
+    
+    def load_from_pickle(self, pickle_file):
+        """Pickleファイルから読み込み"""
+        try:
+            with open(pickle_file, 'rb') as f:
+                self.results = pickle.load(f)
+            print(f"✅ Pickle読み込み成功: {len(self.results)} ケース")
+            
+            if not self.figure_dir:
+                self.figure_dir = os.path.join(os.path.dirname(pickle_file), "figures")
+                os.makedirs(self.figure_dir, exist_ok=True)
+                
+        except Exception as e:
+            print(f"❌ Pickle読み込みエラー: {e}")
+    
+    def create_frobenius_distribution_chart(self, save=True, show=True):
+        """フロベニウス分布比較チャート"""
+        print("📊 フロベニウス分布チャート作成中...")
+        
+        if not self.results:
+            print("❌ データがありません")
+            return None
+        
+        # データの準備
+        case_names = []
+        case_distributions = []
+        
+        for case_name, result in self.results.items():
+            if isinstance(result, dict) and 'results' in result:
+                case_names.append(case_name.replace('Simple Test Case ', 'Case '))
+                
+                # フロベニウス分布を計算
+                frobenius_count = Counter()
+                for p, frobenius in result['results']:
+                    frobenius_count[frobenius] += 1
+                
+                case_distributions.append(frobenius_count)
+        
+        if not case_distributions:
+            print("❌ 有効なデータが見つかりません")
+            return None
+        
+        # グラフ作成
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        
+        # 1. ケース別分布（積み上げ棒グラフ）
+        frobenius_elements = ['1', '-1', 'i', 'j']
+        colors = {'1': '#1f77b4', '-1': '#ff7f0e', 'i': '#2ca02c', 'j': '#d62728'}
+        
+        bottoms = [0] * len(case_names)
+        
+        for element in frobenius_elements:
+            values = [dist.get(element, 0) for dist in case_distributions]
+            ax1.bar(case_names, values, bottom=bottoms, 
+                   label=f'Frobenius: {element}', color=colors[element], alpha=0.8)
+            bottoms = [b + v for b, v in zip(bottoms, values)]
+        
+        ax1.set_title('Frobenius Distribution by Case')
+        ax1.set_ylabel('Count')
+        ax1.legend()
+        plt.setp(ax1.get_xticklabels(), rotation=45, ha='right')
+        ax1.grid(True, alpha=0.3)
+        
+        # 2. 全体分布（円グラフ）
+        overall_distribution = Counter()
+        for dist in case_distributions:
+            for element, count in dist.items():
+                overall_distribution[element] += count
+        
+        if overall_distribution:
+            ax2.pie(overall_distribution.values(), labels=overall_distribution.keys(),
+                   autopct='%1.1f%%', colors=[colors.get(k, '#gray') for k in overall_distribution.keys()],
+                   startangle=90)
+            ax2.set_title('Overall Frobenius Distribution')
+        
+        plt.tight_layout()
+        
+        if save and self.figure_dir:
+            filename = os.path.join(self.figure_dir, 'frobenius_distribution.png')
+            plt.savefig(filename, dpi=300, bbox_inches='tight')
+            print(f"💾 保存: {filename}")
+        
+        if show:
+            plt.show()
+        
+        return fig
+    
+    def create_computation_statistics_chart(self, save=True, show=True):
+        """計算統計チャート"""
+        print("📊 計算統計チャート作成中...")
+        
+        if not self.results:
+            print("❌ データがありません")
+            return None
+        
+        # データの準備
+        case_names = []
+        success_counts = []
+        total_counts = []
+        
+        for case_name, result in self.results.items():
+            if isinstance(result, dict) and 'results' in result:
+                case_names.append(case_name.replace('Simple Test Case ', 'Case '))
+                success_counts.append(len(result['results']))
+                # デフォルトでは結果数をトータルとして使用
+                total_counts.append(len(result['results']))
+        
+        if not case_names:
+            print("❌ 有効なデータが見つかりません")
+            return None
+        
+        # グラフ作成
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+        
+        # 1. 成功計算数
+        bars1 = ax1.bar(case_names, success_counts, color='lightblue', alpha=0.7)
+        ax1.set_title('Successful Computations by Case')
+        ax1.set_ylabel('Number of Successful Computations')
+        ax1.grid(True, alpha=0.3)
+        
+        # 値をバーの上に表示
+        for bar, count in zip(bars1, success_counts):
+            height = bar.get_height()
+            ax1.text(bar.get_x() + bar.get_width()/2., height + max(success_counts)*0.01,
+                    f'{count}', ha='center', va='bottom', fontsize=9)
+        
+        # 2. 成功率
+        success_rates = [s/t*100 if t > 0 else 0 for s, t in zip(success_counts, total_counts)]
+        bars2 = ax2.bar(case_names, success_rates, color='lightgreen', alpha=0.7)
+        ax2.set_title('Success Rate by Case')
+        ax2.set_ylabel('Success Rate (%)')
+        ax2.set_ylim(0, 105)
         ax2.grid(True, alpha=0.3)
         
-        # 実行時間の値をバーの上に表示
-        for bar, time_val in zip(bars2, execution_times):
+        # 値をバーの上に表示
+        for bar, rate in zip(bars2, success_rates):
             height = bar.get_height()
-            ax2.text(bar.get_x() + bar.get_width()/2., height + max(execution_times)*0.01,
-                    '{:.1f}min'.format(time_val), ha='center', va='bottom', fontsize=9)
-        
-        # 3. 成功計算数
-        bars3 = ax3.bar(case_names, total_computations, color='lightgreen', alpha=0.7)
-        ax3.set_title('Successful Computations by Case')
-        ax3.set_ylabel('Number of Successful Computations')
-        ax3.grid(True, alpha=0.3)
-        
-        # 成功計算数の値をバーの上に表示
-        for bar, count in zip(bars3, total_computations):
-            height = bar.get_height()
-            ax3.text(bar.get_x() + bar.get_width()/2., height + max(total_computations)*0.01,
-                    '{:,}'.format(int(count)), ha='center', va='bottom', fontsize=9)
-        
-        # 4. 計算効率 (成功計算数/実行時間)
-        efficiency = [comp/time_val if time_val > 0 else 0 for comp, time_val in zip(total_computations, execution_times)]
-        bars4 = ax4.bar(case_names, efficiency, color='gold', alpha=0.7)
-        ax4.set_title('Computation Efficiency by Case')
-        ax4.set_ylabel('Successful Computations per Minute')
-        ax4.grid(True, alpha=0.3)
-        
-        # 効率の値をバーの上に表示
-        for bar, eff in zip(bars4, efficiency):
-            height = bar.get_height()
-            ax4.text(bar.get_x() + bar.get_width()/2., height + max(efficiency)*0.01,
-                    '{:.1f}'.format(eff), ha='center', va='bottom', fontsize=9)
+            ax2.text(bar.get_x() + bar.get_width()/2., height + 2,
+                    f'{rate:.1f}%', ha='center', va='bottom', fontsize=9)
         
         # x軸ラベルの回転
-        for ax in [ax1, ax2, ax3, ax4]:
+        for ax in [ax1, ax2]:
             plt.setp(ax.get_xticklabels(), rotation=45, ha='right')
         
         plt.tight_layout()
         
-        if save:
+        if save and self.figure_dir:
             filename = os.path.join(self.figure_dir, 'computation_statistics.png')
             plt.savefig(filename, dpi=300, bbox_inches='tight')
-            print("💾 保存: {}".format(filename))
+            print(f"💾 保存: {filename}")
         
         if show:
             plt.show()
         
         return fig
     
-    def create_bias_coefficient_comparison(self, save=True, show=True):
-        """
-        理論バイアス係数の比較グラフ
-        """
-        print("📊 バイアス係数比較グラフ作成中...")
+    def create_summary_dashboard(self, save=True, show=True):
+        """総合サマリーダッシュボード"""
+        print("📊 総合サマリー作成中...")
         
-        # データの準備
-        case_names = []
-        bias_data = []
-        
-        for case_name, result in self.results.items():
-            if 'error' in result:
-                continue
-                
-            case_names.append(case_name.replace('Omar Case ', 'Case '))
-            
-            bias_coeffs = result.get('total_bias_coeffs', {})
-            bias_data.append(bias_coeffs)
-        
-        if not bias_data:
-            print("❌ バイアス係数データが見つかりません")
+        if not self.results:
+            print("❌ データがありません")
             return None
         
-        # グラフ作成
-        fig, ax = plt.subplots(figsize=(14, 8))
-        
-        # 色の設定
-        colors = {
-            '1': '#1f77b4',
-            '-1': '#ff7f0e',
-            'i': '#2ca02c',
-            'j': '#d62728',
-            'k': '#9467bd'
-        }
-        
-        x = np.arange(len(case_names))
-        width = 0.15
-        
-        # 各共役類のバイアス係数をプロット
-        for i, cc in enumerate(['1', '-1', 'i', 'j', 'k']):
-            values = [bias.get(cc, 0) for bias in bias_data]
-            offset = (i - 2) * width
-            ax.bar(x + offset, values, width, label=cc, color=colors[cc], alpha=0.8)
-        
-        ax.set_xlabel('Cases')
-        ax.set_ylabel('Bias Coefficient')
-        ax.set_title('Theoretical Bias Coefficients for Omar Cases\n(M + m values)')
-        ax.set_xticks(x)
-        ax.set_xticklabels(case_names, rotation=45, ha='right')
-        ax.legend(title='Conjugacy Class')
-        ax.grid(True, alpha=0.3)
-        
-        # ゼロ線を強調
-        ax.axhline(y=0, color='black', linestyle='-', alpha=0.3)
-        
-        plt.tight_layout()
-        
-        if save:
-            filename = os.path.join(self.figure_dir, 'bias_coefficients.png')
-            plt.savefig(filename, dpi=300, bbox_inches='tight')
-            print("💾 保存: {}".format(filename))
-        
-        if show:
-            plt.show()
-        
-        return fig
-    
-    def create_comprehensive_summary(self, save=True, show=True):
-        """
-        全体的なサマリーダッシュボード
-        """
-        print("📊 総合サマリーダッシュボード作成中...")
-        
-        # データ収集
-        case_names = []
-        success_rates = []
-        execution_times = []
-        total_successful = []
-        
-        # 全ケースの統計
-        overall_stats = {
-            'total_cases': 0,
-            'successful_cases': 0,
-            'total_computations': 0,
-            'total_successful_computations': 0,
-            'total_execution_time': 0
-        }
+        # データ統計
+        total_cases = len(self.results)
+        successful_cases = 0
+        total_computations = 0
+        successful_computations = 0
         
         for case_name, result in self.results.items():
-            overall_stats['total_cases'] += 1
-            
-            if 'error' not in result:
-                overall_stats['successful_cases'] += 1
-                
-                case_names.append(case_name.replace('Omar Case ', 'Case '))
-                success_rates.append(result.get('success_rate', 0))
-                execution_times.append(result.get('execution_time', 0))
-                
-                stats = result.get('computation_stats', {})
-                successful_comps = stats.get('successful_computations', 0)
-                total_successful.append(successful_comps)
-                
-                overall_stats['total_successful_computations'] += successful_comps
-                overall_stats['total_computations'] += stats.get('total_primes', 0)
-                overall_stats['total_execution_time'] += result.get('execution_time', 0)
+            if isinstance(result, dict) and 'results' in result:
+                successful_cases += 1
+                case_computations = len(result['results'])
+                successful_computations += case_computations
+                total_computations += case_computations
         
         # グラフ作成
-        fig = plt.figure(figsize=(20, 16))
+        fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(16, 12))
         
-        # グリッドレイアウト
-        gs = fig.add_gridspec(4, 4, hspace=0.3, wspace=0.3)
-        
-        # 1. 実験概要 (テキスト)
-        ax_summary = fig.add_subplot(gs[0, :2])
-        ax_summary.axis('off')
-        
+        # 1. 実験概要（テキスト）
+        ax1.axis('off')
         summary_text = [
-            "Omar's 13 Cases Medium Scale Verification Results",
+            "Experiment Summary",
             "",
-            "総実験ケース数: {} / {}".format(overall_stats['successful_cases'], overall_stats['total_cases']),
-            "総実行時間: {:.2f} 時間".format(overall_stats['total_execution_time'] / 3600),
-            "総計算数: {:,}".format(overall_stats['total_computations']),
-            "成功計算数: {:,}".format(overall_stats['total_successful_computations']),
-            "全体成功率: {:.2f}%".format(
-                overall_stats['total_successful_computations'] / overall_stats['total_computations'] * 100
-                if overall_stats['total_computations'] > 0 else 0
-            ),
-            "平均計算速度: {:.0f} 計算/時間".format(
-                overall_stats['total_successful_computations'] / (overall_stats['total_execution_time'] / 3600)
-                if overall_stats['total_execution_time'] > 0 else 0
-            )
+            f"Total Cases: {successful_cases}/{total_cases}",
+            f"Total Computations: {total_computations:,}",
+            f"Successful Computations: {successful_computations:,}",
+            f"Overall Success Rate: {successful_computations/total_computations*100:.1f}%" if total_computations > 0 else "Overall Success Rate: 0%"
         ]
         
         for i, text in enumerate(summary_text):
-            ax_summary.text(0.1, 0.9 - i*0.12, text, fontsize=12, 
-                          weight='bold' if i == 0 else 'normal',
-                          transform=ax_summary.transAxes)
+            ax1.text(0.1, 0.9 - i*0.15, text, fontsize=14, 
+                    weight='bold' if i == 0 else 'normal',
+                    transform=ax1.transAxes)
         
-        # 2. 成功率分布
-        ax_success = fig.add_subplot(gs[0, 2:])
-        ax_success.hist(success_rates, bins=10, alpha=0.7, color='skyblue', edgecolor='black')
-        ax_success.set_title('Success Rate Distribution')
-        ax_success.set_xlabel('Success Rate (%)')
-        ax_success.set_ylabel('Number of Cases')
-        ax_success.grid(True, alpha=0.3)
-        
-        # 3. ケース別成功率
-        ax_rates = fig.add_subplot(gs[1, :])
-        bars = ax_rates.bar(case_names, success_rates, color='lightcoral', alpha=0.7)
-        ax_rates.set_title('Success Rate by Case')
-        ax_rates.set_ylabel('Success Rate (%)')
-        ax_rates.set_ylim(0, 100)
-        ax_rates.grid(True, alpha=0.3)
-        plt.setp(ax_rates.get_xticklabels(), rotation=45, ha='right')
-        
-        # 4. 実行時間 vs 成功計算数
-        ax_scatter = fig.add_subplot(gs[2, :2])
-        scatter = ax_scatter.scatter(execution_times, total_successful, alpha=0.7, s=100, c=success_rates, 
-                                   cmap='viridis', edgecolors='black')
-        ax_scatter.set_xlabel('Execution Time (seconds)')
-        ax_scatter.set_ylabel('Successful Computations')
-        ax_scatter.set_title('Execution Time vs Successful Computations')
-        ax_scatter.grid(True, alpha=0.3)
-        
-        # カラーバー
-        cbar = plt.colorbar(scatter, ax=ax_scatter)
-        cbar.set_label('Success Rate (%)')
-        
-        # 5. 効率性分析
-        ax_efficiency = fig.add_subplot(gs[2, 2:])
-        efficiency = [succ/time_val if time_val > 0 else 0 for succ, time_val in zip(total_successful, execution_times)]
-        ax_efficiency.bar(case_names, efficiency, color='gold', alpha=0.7)
-        ax_efficiency.set_title('Computation Efficiency (Computations/Second)')
-        ax_efficiency.set_ylabel('Computations per Second')
-        ax_efficiency.grid(True, alpha=0.3)
-        plt.setp(ax_efficiency.get_xticklabels(), rotation=45, ha='right')
-        
-        # 6. 全体的なフロベニウス分布
-        ax_overall_dist = fig.add_subplot(gs[3, :2])
-        
-        # 全ケースのフロベニウス分布を統合
+        # 2. フロベニウス全体分布
         overall_frobenius = Counter()
         for case_name, result in self.results.items():
-            if 'error' not in result:
-                for p, cc in result.get('results', []):
-                    overall_frobenius[cc] += 1
+            if isinstance(result, dict) and 'results' in result:
+                for p, frobenius in result['results']:
+                    overall_frobenius[frobenius] += 1
         
         if overall_frobenius:
-            colors_pie = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd']
-            ax_overall_dist.pie(overall_frobenius.values(), labels=overall_frobenius.keys(), 
-                              autopct='%1.1f%%', colors=colors_pie, startangle=90)
-            ax_overall_dist.set_title('Overall Frobenius Distribution\n(All Cases Combined)')
+            colors_pie = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728']
+            ax2.pie(overall_frobenius.values(), labels=overall_frobenius.keys(),
+                   autopct='%1.1f%%', colors=colors_pie, startangle=90)
+            ax2.set_title('Overall Frobenius Distribution')
         
-        # 7. ケース比較 (正規化されたメトリクス)
-        ax_comparison = fig.add_subplot(gs[3, 2:])
+        # 3. ケース別成功計算数
+        case_names = []
+        success_counts = []
         
-        if success_rates and execution_times and total_successful:
-            norm_success = [x/max(success_rates) for x in success_rates]
-            norm_efficiency = [x/max(efficiency) for x in efficiency]
-            norm_computations = [x/max(total_successful) for x in total_successful]
+        for case_name, result in self.results.items():
+            if isinstance(result, dict) and 'results' in result:
+                case_names.append(case_name.replace('Simple Test Case ', 'Case '))
+                success_counts.append(len(result['results']))
+        
+        if case_names:
+            ax3.bar(case_names, success_counts, color='lightcoral', alpha=0.7)
+            ax3.set_title('Successful Computations by Case')
+            ax3.set_ylabel('Count')
+            plt.setp(ax3.get_xticklabels(), rotation=45, ha='right')
+            ax3.grid(True, alpha=0.3)
+        
+        # 4. 統計サマリー
+        ax4.axis('off')
+        if case_names and success_counts:
+            stats_text = [
+                "Statistics",
+                "",
+                f"Average computations per case: {np.mean(success_counts):.1f}",
+                f"Max computations: {max(success_counts)}",
+                f"Min computations: {min(success_counts)}",
+                f"Standard deviation: {np.std(success_counts):.1f}"
+            ]
             
-            x_pos = np.arange(len(case_names))
-            width = 0.25
-            
-            ax_comparison.bar(x_pos - width, norm_success, width, label='Success Rate', alpha=0.7)
-            ax_comparison.bar(x_pos, norm_efficiency, width, label='Efficiency', alpha=0.7)
-            ax_comparison.bar(x_pos + width, norm_computations, width, label='Total Computations', alpha=0.7)
-            
-            ax_comparison.set_title('Normalized Performance Comparison')
-            ax_comparison.set_ylabel('Normalized Score (0-1)')
-            ax_comparison.set_xticks(x_pos)
-            ax_comparison.set_xticklabels(case_names, rotation=45, ha='right')
-            ax_comparison.legend()
-            ax_comparison.grid(True, alpha=0.3)
+            for i, text in enumerate(stats_text):
+                ax4.text(0.1, 0.9 - i*0.15, text, fontsize=12,
+                        weight='bold' if i == 0 else 'normal',
+                        transform=ax4.transAxes)
         
-        plt.suptitle('Omar\'s 13 Cases: Comprehensive Analysis Dashboard', fontsize=16, fontweight='bold')
+        plt.suptitle('Experiment Summary Dashboard', fontsize=16, fontweight='bold')
+        plt.tight_layout()
         
-        if save:
-            filename = os.path.join(self.figure_dir, 'comprehensive_summary.png')
+        if save and self.figure_dir:
+            filename = os.path.join(self.figure_dir, 'summary_dashboard.png')
             plt.savefig(filename, dpi=300, bbox_inches='tight')
-            print("💾 保存: {}".format(filename))
+            print(f"💾 保存: {filename}")
         
         if show:
             plt.show()
         
         return fig
     
-    def create_all_visualizations(self, create_individual_bias=True):
-        """
-        全ての可視化を一括作成
-        """
+    def create_all_visualizations(self):
+        """全ての可視化を一括作成"""
         print("🎨 全可視化を作成中...")
         
         figures = []
         
-        # 1. 個別Chebyshevバイアスプロット（オプション）
-        if create_individual_bias:
-            for case_name in self.results.keys():
-                if 'error' not in self.results[case_name]:
-                    try:
-                        fig = self.create_chebyshev_bias_plot(case_name, show=False)
-                        if fig:
-                            figures.append(('chebyshev_bias_{}'.format(case_name), fig))
-                    except Exception as e:
-                        print("⚠️  {} の処理でエラー: {}".format(case_name, str(e)))
+        try:
+            # 1. フロベニウス分布
+            fig1 = self.create_frobenius_distribution_chart(show=False)
+            if fig1:
+                figures.append(('frobenius_distribution', fig1))
+        except Exception as e:
+            print(f"⚠️  フロベニウス分布作成エラー: {e}")
         
-        # 2. フロベニウス分布
-        fig1 = self.create_frobenius_distribution_chart(show=False)
-        if fig1:
-            figures.append(('frobenius_distribution', fig1))
+        try:
+            # 2. 計算統計
+            fig2 = self.create_computation_statistics_chart(show=False)
+            if fig2:
+                figures.append(('computation_statistics', fig2))
+        except Exception as e:
+            print(f"⚠️  計算統計作成エラー: {e}")
         
-        # 3. バイアス係数比較
-        fig2 = self.create_bias_coefficient_comparison(show=False)
-        if fig2:
-            figures.append(('bias_coefficients', fig2))
+        try:
+            # 3. 総合サマリー
+            fig3 = self.create_summary_dashboard(show=False)
+            if fig3:
+                figures.append(('summary_dashboard', fig3))
+        except Exception as e:
+            print(f"⚠️  サマリーダッシュボード作成エラー: {e}")
         
-        # 4. 計算統計
-        fig3 = self.create_computation_statistics_chart(show=False)
-        if fig3:
-            figures.append(('computation_statistics', fig3))
-        
-        # 5. 総合サマリー
-        fig4 = self.create_comprehensive_summary(show=False)
-        if fig4:
-            figures.append(('comprehensive_summary', fig4))
-        
-        print("✅ 全可視化完了！")
-        print("📁 図の保存先: {}".format(self.figure_dir))
-        print("📊 作成されたグラフ数: {}".format(len(figures)))
+        print(f"✅ 可視化完了！作成されたグラフ数: {len(figures)}")
+        if self.figure_dir:
+            print(f"📁 図の保存先: {self.figure_dir}")
         
         return figures
 
 # 便利な関数
-def visualize_omar_results(results_dir=None, json_file=None, pickle_file=None, 
-                          create_individual_bias=True):
+def visualize_omar_results(results_dir=None, json_file=None, pickle_file=None):
     """
     保存された結果から全ての可視化を作成
     
@@ -333,12 +382,11 @@ def visualize_omar_results(results_dir=None, json_file=None, pickle_file=None,
     - results_dir: 結果ディレクトリパス
     - json_file: JSONファイルパス（直接指定）
     - pickle_file: Pickleファイルパス（直接指定）
-    - create_individual_bias: 個別Chebyshevバイアスプロットを作成するか
     
     Returns:
     - visualizer: 可視化オブジェクト
     """
-    print("🎨 Omar結果可視化を開始します...")
+    print("🎨 結果可視化を開始します...")
     
     # 可視化ツール初期化
     visualizer = ChebyshevBiasVisualizer(
@@ -348,44 +396,34 @@ def visualize_omar_results(results_dir=None, json_file=None, pickle_file=None,
     )
     
     # 全可視化作成
-    figures = visualizer.create_all_visualizations(create_individual_bias=create_individual_bias)
+    figures = visualizer.create_all_visualizations()
     
-    print("\n🎉 可視化完了！")
-    print("📁 結果は以下に保存されました: {}".format(visualizer.figure_dir))
+    print("\\n🎉 可視化完了！")
+    if visualizer.figure_dir:
+        print(f"📁 結果は以下に保存されました: {visualizer.figure_dir}")
     
     return visualizer
-
-def create_single_bias_plot(results_dir, case_name):
-    """
-    特定ケースのChebyshevバイアスプロットのみ作成
-    """
-    visualizer = ChebyshevBiasVisualizer(results_dir=results_dir)
-    return visualizer.create_chebyshev_bias_plot(case_name)
 
 # メイン実行部分
 if __name__ == "__main__":
     print("="*80)
     print("Chebyshevバイアス可視化ツール")
-    print("Visualization Tools for Omar's 13 Cases Results")
+    print("Visualization Tools for Experiment Results")
     print("="*80)
     
-    print("\n🎨 使用方法:")
+    print("\\n🎨 使用方法:")
     print("1. visualize_omar_results(results_dir='path/to/results')")
     print("2. visualize_omar_results(json_file='path/to/file.json')")
-    print("3. create_single_bias_plot(results_dir='path', case_name='Omar Case 1')")
     
-    print("\n💡 使用例:")
-    print("   sage: visualizer = visualize_omar_results(results_dir='./medium_scale_results_20240101_120000')")
+    print("\\n💡 使用例:")
+    print("   sage: visualizer = visualize_omar_results(results_dir='./debug_results_20240101_120000')")
     print("   sage: visualizer = visualize_omar_results(json_file='results.json')")
-    print("   sage: fig = create_single_bias_plot('./results', 'Omar Case 1')")
     
-    print("\n📊 作成されるグラフ:")
+    print("\\n📊 作成されるグラフ:")
     print("   - フロベニウス分布比較")
-    print("   - バイアス係数比較") 
-    print("   - 計算統計（成功率、実行時間等）")
+    print("   - 計算統計（成功率、計算数等）")
     print("   - 総合サマリーダッシュボード")
-    print("   - 個別Chebyshevバイアスプロット（オプション）")
     
-    print("\n" + "="*80)
+    print("\\n" + "="*80)
     print("🎯 準備完了 - 結果ディレクトリまたはファイルを指定してください")
     print("="*80)
