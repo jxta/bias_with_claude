@@ -190,14 +190,23 @@ cleanup_results() {
     fi
 }
 
-# SageMathスクリプト実行関数
+# SageMathスクリプト実行関数（改良版）
 run_sage_script() {
     local script_content="$1"
     
     # 一時ファイルを作成してスクリプトを実行
-    local temp_file=$(mktemp /tmp/sage_script_XXXXXX.py)
-    echo "$script_content" > "$temp_file"
+    local temp_file=$(mktemp /tmp/sage_script_XXXXXX.sage)
     
+    # SageMath環境の初期化を含むスクリプトを作成
+    cat > "$temp_file" << EOF
+# SageMath環境の初期化
+from sage.all import *
+
+# スクリプト内容
+$script_content
+EOF
+    
+    # SageMathで実行
     sage "$temp_file"
     local exit_code=$?
     
