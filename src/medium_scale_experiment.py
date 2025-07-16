@@ -62,33 +62,50 @@ def debug_sage_basics():
     print("\n🔍 === SageMath基本機能テスト ===")
     
     try:
-        # 変数の作成
-        x = var('x')
-        print(f"✅ 変数x作成: {x}")
+        # 多項式リングの作成
+        print("Step 1: 多項式リング作成")
+        R = ZZ['x']  # 整数上の多項式リング
+        x = R.gen()  # 生成元
+        print(f"✅ 多項式リング作成: {R}")
+        print(f"✅ 生成元x作成: {x}")
+        print(f"   x の型: {type(x)}")
         
-        # 簡単な多項式
+        # 多項式の作成
+        print("Step 2: 多項式作成")
         f = x**2 - 2
         print(f"✅ 多項式作成: {f}")
+        print(f"   f の型: {type(f)}")
         
-        # 有限体
+        # 有限体の作成
+        print("Step 3: 有限体作成")
         K = GF(3)
         print(f"✅ 有限体GF(3)作成: {K}")
         
+        # 有限体上の多項式リング
+        print("Step 4: 有限体上の多項式リング作成")
+        R_K = K['x']
+        print(f"✅ GF(3)上の多項式リング: {R_K}")
+        
         # 多項式の有限体での表現
-        f_3 = f.change_ring(K)
+        print("Step 5: 多項式を有限体に変換")
+        f_3 = R_K(f)  # 多項式をGF(3)上に変換
         print(f"✅ 多項式をGF(3)に変換: {f_3}")
+        print(f"   f_3 の型: {type(f_3)}")
         
         # 因数分解
+        print("Step 6: 因数分解")
         factors = f_3.factor()
         print(f"✅ 因数分解: {factors}")
         print(f"   因数の数: {len(factors)}")
         
         # 根の計算
+        print("Step 7: 根の計算")
         roots = f_3.roots()
         print(f"✅ 根の計算: {roots}")
         print(f"   根の数: {len(roots)}")
         
         # 既約性チェック
+        print("Step 8: 既約性チェック")
         is_irreducible = f_3.is_irreducible()
         print(f"✅ 既約性: {is_irreducible}")
         
@@ -105,10 +122,12 @@ def debug_polynomial_step_by_step(polynomial_str, prime):
     print(f"\n🔍 === ステップバイステップデバッグ (p={prime}) ===")
     
     try:
-        # ステップ1: 変数作成
-        print("Step 1: 変数作成")
-        x = var('x')
-        print(f"  x = {x}")
+        # ステップ1: 多項式リング作成
+        print("Step 1: 多項式リング作成")
+        R = ZZ['x']  # 整数上の多項式リング
+        x = R.gen()
+        print(f"  多項式リング: {R}")
+        print(f"  生成元x: {x}")
         
         # ステップ2: 多項式文字列の解析
         print("Step 2: 多項式文字列解析")
@@ -116,7 +135,8 @@ def debug_polynomial_step_by_step(polynomial_str, prime):
         
         # ステップ3: 多項式オブジェクト作成
         print("Step 3: 多項式オブジェクト作成")
-        f = eval(polynomial_str)
+        # polynomial_strを安全に評価（xは多項式リングの要素として）
+        f = eval(polynomial_str.replace('x', 'x'))
         print(f"  f = {f}")
         print(f"  f の型: {type(f)}")
         
@@ -125,32 +145,37 @@ def debug_polynomial_step_by_step(polynomial_str, prime):
         K = GF(prime)
         print(f"  K = {K}")
         
-        # ステップ5: 多項式の有限体への変換
-        print("Step 5: 多項式を有限体に変換")
-        f_p = f.change_ring(K)
+        # ステップ5: 有限体上の多項式リング作成
+        print("Step 5: 有限体上の多項式リング作成")
+        R_K = K['x']
+        print(f"  R_K = {R_K}")
+        
+        # ステップ6: 多項式の有限体への変換
+        print("Step 6: 多項式を有限体に変換")
+        f_p = R_K(f)
         print(f"  f_p = {f_p}")
         print(f"  f_p の型: {type(f_p)}")
         
-        # ステップ6: 因数分解
-        print("Step 6: 因数分解")
+        # ステップ7: 因数分解
+        print("Step 7: 因数分解")
         factors = f_p.factor()
         print(f"  factors = {factors}")
         print(f"  factors の型: {type(factors)}")
         print(f"  因数の数: {len(factors)}")
         
-        # ステップ7: 根の計算
-        print("Step 7: 根の計算")
+        # ステップ8: 根の計算
+        print("Step 8: 根の計算")
         roots = f_p.roots()
         print(f"  roots = {roots}")
         print(f"  根の数: {len(roots)}")
         
-        # ステップ8: 既約性チェック
-        print("Step 8: 既約性チェック")
+        # ステップ9: 既約性チェック
+        print("Step 9: 既約性チェック")
         is_irreducible = f_p.is_irreducible()
         print(f"  既約: {is_irreducible}")
         
-        # ステップ9: フロベニウス元決定
-        print("Step 9: フロベニウス元決定")
+        # ステップ10: フロベニウス元決定
+        print("Step 10: フロベニウス元決定")
         num_roots = len(roots)
         if num_roots == 0:
             frobenius = "1"
@@ -169,6 +194,32 @@ def debug_polynomial_step_by_step(polynomial_str, prime):
         print(f"❌ エラー発生: {e}")
         import traceback
         traceback.print_exc()
+        return None
+
+def create_polynomial_from_string(polynomial_str):
+    """文字列から多項式オブジェクトを安全に作成"""
+    try:
+        # 整数上の多項式リング
+        R = ZZ['x']
+        x = R.gen()
+        
+        # 文字列を評価して多項式を作成
+        # セキュリティのため、基本的な操作のみ許可
+        allowed_chars = set('x0123456789+-*() ')
+        if not all(c in allowed_chars for c in polynomial_str):
+            raise ValueError(f"不正な文字が含まれています: {polynomial_str}")
+        
+        # xを多項式リングの生成元で置換
+        f = eval(polynomial_str)
+        
+        # 多項式リングの要素に変換
+        if not isinstance(f, R.element_class):
+            f = R(f)
+        
+        return f
+        
+    except Exception as e:
+        print(f"❌ 多項式作成エラー: {e}")
         return None
 
 class DebugExperiment:
