@@ -190,6 +190,21 @@ cleanup_results() {
     fi
 }
 
+# SageMathスクリプト実行関数
+run_sage_script() {
+    local script_content="$1"
+    
+    # 一時ファイルを作成してスクリプトを実行
+    local temp_file=$(mktemp /tmp/sage_script_XXXXXX.py)
+    echo "$script_content" > "$temp_file"
+    
+    sage "$temp_file"
+    local exit_code=$?
+    
+    rm -f "$temp_file"
+    return $exit_code
+}
+
 # 実験実行関数
 run_experiment() {
     local experiment_type=$1
@@ -200,7 +215,7 @@ run_experiment() {
     case $experiment_type in
         "test")
             print_info "軽量テスト実行中..."
-            sage << 'EOF'
+            run_sage_script "
 load('src/frobenius_calculator.py')
 try:
     experiment, results = run_quick_test()
@@ -209,12 +224,12 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             ;;
         
         "medium")
             print_info "中規模実験実行中 (10^6規模)..."
-            sage << 'EOF'
+            run_sage_script "
 load('src/medium_scale_experiment.py')
 try:
     check_dependencies()
@@ -224,12 +239,12 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             ;;
         
         "medium-test")
             print_info "中規模テスト実行中 (10^4規模)..."
-            sage << 'EOF'
+            run_sage_script "
 load('src/medium_scale_experiment.py')
 try:
     check_dependencies()
@@ -239,7 +254,7 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             ;;
         
         "large")
@@ -248,7 +263,7 @@ EOF
             read -p "続行しますか? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                sage << 'EOF'
+                run_sage_script "
 load('src/large_scale_experiment.py')
 try:
     check_large_scale_dependencies()
@@ -258,7 +273,7 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             else
                 print_info "大規模実験をキャンセルしました"
             fi
@@ -266,7 +281,7 @@ EOF
         
         "large-test")
             print_info "大規模テスト実行中 (10^7規模)..."
-            sage << 'EOF'
+            run_sage_script "
 load('src/large_scale_experiment.py')
 try:
     check_large_scale_dependencies()
@@ -276,7 +291,7 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             ;;
         
         "ultra")
@@ -286,7 +301,7 @@ EOF
             read -p "続行しますか? (y/N): " -n 1 -r
             echo
             if [[ $REPLY =~ ^[Yy]$ ]]; then
-                sage << 'EOF'
+                run_sage_script "
 load('src/ultra_large_experiment.py')
 try:
     if check_ultra_large_dependencies():
@@ -298,7 +313,7 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             else
                 print_info "超大規模実験をキャンセルしました"
             fi
@@ -306,7 +321,7 @@ EOF
         
         "ultra-test")
             print_info "超大規模テスト実行中 (10^8規模)..."
-            sage << 'EOF'
+            run_sage_script "
 load('src/ultra_large_experiment.py')
 try:
     if check_ultra_large_dependencies():
@@ -318,7 +333,7 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             ;;
         
         "single-case")
@@ -327,7 +342,7 @@ EOF
                 exit 1
             fi
             print_info "単一ケーステスト実行中: Omar Case $((case_index + 1))"
-            sage << EOF
+            run_sage_script "
 load('src/medium_scale_experiment.py')
 try:
     experiment, result = run_single_case_test(case_index=$case_index, x_max=1000)
@@ -336,7 +351,7 @@ except Exception as e:
     print(f'❌ エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
             ;;
         
         *)
@@ -361,7 +376,7 @@ run_visualization() {
     
     print_info "可視化対象: $latest_results"
     
-    sage << EOF
+    run_sage_script "
 load('src/chebyshev_bias_visualizer.py')
 try:
     visualizer = visualize_omar_results(results_dir='$latest_results')
@@ -370,7 +385,7 @@ except Exception as e:
     print(f'❌ 可視化エラー: {e}')
     import traceback
     traceback.print_exc()
-EOF
+"
 }
 
 # パフォーマンス監視
