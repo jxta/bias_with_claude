@@ -17,6 +17,9 @@ Quaternion拡大における素数の偏りの計算プログラム
 4. 特定のケースのみ実行:
    sage main_runner.py --case 1 --compute-frobenius
    sage main_runner.py --case 1 --plot-graphs
+   
+5. 並列処理の設定:
+   sage main_runner.py --plot-graphs --graph-processes 8
 """
 
 import argparse
@@ -43,18 +46,20 @@ except ImportError as e:
     sys.exit(1)
 
 class QuaternionResearch:
-    def __init__(self, max_prime=10**6, num_processes=None, graph_max_x=None):
+    def __init__(self, max_prime=10**6, num_processes=None, graph_max_x=None, graph_processes=None):
         """
         Quaternion拡大研究の統合クラス
         
         Args:
             max_prime: 計算する最大の素数
-            num_processes: 使用するプロセス数
+            num_processes: フロベニウス計算用プロセス数
             graph_max_x: グラフの最大x値 (Noneの場合は自動検出)
+            graph_processes: グラフ描画用プロセス数 (Noneの場合は自動設定)
         """
         self.max_prime = max_prime
-        self.graph_max_x = graph_max_x  # 新規追加
+        self.graph_max_x = graph_max_x
         self.num_processes = num_processes or mp.cpu_count()
+        self.graph_processes = graph_processes  # 新規追加
         self.data_dir = "frobenius_data"
         self.graph_dir = "graphs"
         
@@ -67,7 +72,8 @@ class QuaternionResearch:
         print(f"設定:")
         print(f"  最大素数: {self.max_prime:,}")
         print(f"  グラフ最大x値: {'自動検出' if self.graph_max_x is None else f'{self.graph_max_x:,}'}")
-        print(f"  プロセス数: {self.num_processes}")
+        print(f"  フロベニウス計算プロセス数: {self.num_processes}")
+        print(f"  グラフ描画プロセス数: {'自動設定' if self.graph_processes is None else self.graph_processes}")
         print(f"  データディレクトリ: {self.data_dir}")
         print(f"  グラフディレクトリ: {self.graph_dir}")
         print()
@@ -161,13 +167,14 @@ class QuaternionResearch:
     
     def plot_graphs_all_cases(self):
         """
-        全ケースのグラフを描画（改善版）
+        全ケースのグラフを描画（並列処理対応版）
         """
         print("=" * 60)
-        print("全ケースのグラフ描画を開始")
+        print("全ケースのグラフ描画を開始（並列処理版）")
         print("=" * 60)
         
-        analyzer = BiasAnalyzer(self.data_dir)
+        # 並列処理対応のAnalyzerを初期化
+        analyzer = BiasAnalyzer(self.data_dir, num_processes=self.graph_processes)
         
         try:
             # 改善版: 自動検出またはユーザー指定のmax_xを使用
@@ -180,7 +187,7 @@ class QuaternionResearch:
     
     def plot_graphs_single_case(self, case_id):
         """
-        単一ケースのグラフを描画（改善版）
+        単一ケースのグラフを描画（並列処理対応版）
         
         Args:
             case_id: ケースID (1-13)
@@ -189,9 +196,10 @@ class QuaternionResearch:
             print(f"エラー: ケースIDは1-13の範囲で指定してください。指定値: {case_id}")
             return
         
-        print(f"Case {case_id} のグラフ描画を開始")
+        print(f"Case {case_id} のグラフ描画を開始（並列処理版）")
         
-        analyzer = BiasAnalyzer(self.data_dir)
+        # 並列処理対応のAnalyzerを初期化
+        analyzer = BiasAnalyzer(self.data_dir, num_processes=self.graph_processes)
         
         try:
             # 改善版: 自動検出またはユーザー指定のmax_xを使用
@@ -255,6 +263,15 @@ class QuaternionResearch:
         if max_detected_prime > 0:
             print(f"\n検出された最大素数: {max_detected_prime:,}")
             print(f"推奨グラフ最大x値: {self._suggest_graph_max_x(max_detected_prime):,}")
+            
+            # 並列処理の推奨設定を表示
+            cpu_count = mp.cpu_count()
+            if max_detected_prime >= 10**7:
+                recommended_processes = min(8, cpu_count)
+                print(f"推奨グラフ描画プロセス数: {recommended_processes} (大規模データ用)")
+            else:
+                recommended_processes = min(4, cpu_count)
+                print(f"推奨グラフ描画プロセス数: {recommended_processes}")
     
     def _suggest_graph_max_x(self, max_prime):
         """
@@ -302,7 +319,9 @@ def main():
     parser.add_argument('--graph-max-x', type=int, 
                         help='グラフの最大x値 (指定しない場合は自動検出)')
     parser.add_argument('--processes', type=int, 
-                        help='使用するプロセス数 (デフォルト: 自動)')
+                        help='フロベニウス計算用プロセス数 (デフォルト: 自動)')
+    parser.add_argument('--graph-processes', type=int,
+                        help='グラフ描画用プロセス数 (デフォルト: 自動、大規模データには8推奨)')
     
     args = parser.parse_args()
     
@@ -315,7 +334,8 @@ def main():
     research = QuaternionResearch(
         max_prime=args.max_prime,
         num_processes=args.processes,
-        graph_max_x=args.graph_max_x  # 新規追加
+        graph_max_x=args.graph_max_x,
+        graph_processes=args.graph_processes  # 新規追加
     )
     
     # データファイルチェック
