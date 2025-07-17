@@ -9,6 +9,8 @@ import matplotlib.ticker as ptick
 import multiprocessing as mp
 from multiprocessing import Pool
 from functools import partial
+import argparse
+import math
 
 # SageMathの必要な関数をインポート
 from sage.all import *
@@ -24,9 +26,24 @@ class BiasAnalyzer:
         """
         self.data_dir = data_dir
         self.case_data = {}
-        self.num_processes = num_processes or min(mp.cpu_count(), 8)  # 最大8プロセス
         
-        print(f"BiasAnalyzer初期化: プロセス数={self.num_processes}")
+        # プロセス数の設定
+        if num_processes is None:
+            self.num_processes = min(mp.cpu_count(), 8)  # 最大8プロセス
+        else:
+            # 引数で指定された値を使用（範囲チェック付き）
+            max_processes = mp.cpu_count()
+            if num_processes > max_processes:
+                print(f"警告: 指定されたプロセス数 {num_processes} が利用可能なCPUコア数 {max_processes} を超えています。")
+                print(f"プロセス数を {max_processes} に調整します。")
+                self.num_processes = max_processes
+            elif num_processes < 1:
+                print(f"警告: 無効なプロセス数 {num_processes} が指定されました。1に設定します。")
+                self.num_processes = 1
+            else:
+                self.num_processes = num_processes
+        
+        print(f"BiasAnalyzer初期化: プロセス数={self.num_processes} (利用可能CPUコア数: {mp.cpu_count()})")
         
         # M(σ) + m(σ) の値 (青木さんのメモより)
         self.bias_coefficients = {
@@ -239,17 +256,49 @@ def compute_pi_half_chunk(chunk_data):
     
     for x in sample_points_chunk:
         # x以下の素数について累積
-        pi_sum = 0
+        pi_sum = 0.0
         for p in sorted_primes:
             if p <= x:
-                pi_sum += 1 / sqrt(p)
+                # math.sqrt を使用（並列処理で安全）
+                pi_sum += 1.0 / math.sqrt(float(p))
             else:
                 break
-        results.append(float(pi_sum))
+        results.append(pi_sum)
     
     return results
 
 class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
+    
+    def compute_pi_half_sequential(self, primes_dict, sample_points):
+        """
+        シーケンシャル版π_{1/2}(x; σ) 計算（並列処理の問題回避用）
+        
+        Args:
+            primes_dict: {prime: frobenius_index} の辞書
+            sample_points: サンプリング点のリスト
+            
+        Returns:
+            (x_values, pi_half_values) のタプル
+        """
+        # 素数をソート
+        sorted_primes = sorted([p for p in primes_dict.keys()])
+        
+        if not sorted_primes:
+            return [], []
+        
+        pi_half_values = []
+        
+        for x in sample_points:
+            # x以下の素数について累積
+            pi_sum = 0.0
+            for p in sorted_primes:
+                if p <= x:
+                    pi_sum += 1.0 / math.sqrt(float(p))
+                else:
+                    break
+            pi_half_values.append(pi_sum)
+        
+        return sample_points, pi_half_values
     
     def compute_pi_half_parallel(self, primes_dict, sample_points):
         """
@@ -268,24 +317,39 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
         if not sorted_primes:
             return [], []
         
-        # サンプル点を並列処理用にチャンクに分割
-        chunk_size = max(1, len(sample_points) // self.num_processes)
-        chunks = []
+        # 小さなデータセットの場合はシーケンシャル処理
+        if len(sample_points) < 100 or len(sorted_primes) < 1000:
+            return self.compute_pi_half_sequential(primes_dict, sample_points)
         
-        for i in range(0, len(sample_points), chunk_size):
-            chunk = sample_points[i:i + chunk_size]
-            chunks.append((sorted_primes, chunk))
-        
-        # 並列処理実行
-        with Pool(processes=self.num_processes) as pool:
-            chunk_results = pool.map(compute_pi_half_chunk, chunks)
-        
-        # 結果をマージ
-        pi_half_values = []
-        for chunk_result in chunk_results:
-            pi_half_values.extend(chunk_result)
-        
-        return sample_points, pi_half_values
+        try:
+            # サンプル点を並列処理用にチャンクに分割
+            chunk_size = max(1, len(sample_points) // self.num_processes)
+            chunks = []
+            
+            for i in range(0, len(sample_points), chunk_size):
+                chunk = sample_points[i:i + chunk_size]
+                chunks.append((sorted_primes, chunk))
+            
+            # 並列処理実行（タイムアウト付き）
+            with Pool(processes=self.num_processes) as pool:
+                try:
+                    chunk_results = pool.map(compute_pi_half_chunk, chunks)
+                except Exception as e:
+                    print(f"並列処理でエラーが発生: {e}")
+                    print("シーケンシャル処理に切り替えます...")
+                    return self.compute_pi_half_sequential(primes_dict, sample_points)
+            
+            # 結果をマージ
+            pi_half_values = []
+            for chunk_result in chunk_results:
+                pi_half_values.extend(chunk_result)
+            
+            return sample_points, pi_half_values
+            
+        except Exception as e:
+            print(f"並列処理の初期化でエラーが発生: {e}")
+            print("シーケンシャル処理に切り替えます...")
+            return self.compute_pi_half_sequential(primes_dict, sample_points)
     
     def compute_pi_half_by_frobenius_parallel(self, frobenius_data, sample_points):
         """
@@ -298,7 +362,7 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
         Returns:
             各フロベニウス元ごとの辞書
         """
-        print(f"  並列データ処理中... (サンプル点数: {len(sample_points)}, プロセス数: {self.num_processes})")
+        print(f"  データ処理中... (サンプル点数: {len(sample_points)}, プロセス数: {self.num_processes})")
         
         # フロベニウス元ごとに素数を分類
         frobenius_primes = defaultdict(list)
@@ -307,7 +371,7 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
             p = int(prime_str)
             frobenius_primes[frobenius_idx].append(p)
         
-        # 各フロベニウス元についてπ_{1/2}を並列計算
+        # 各フロベニウス元についてπ_{1/2}を計算
         results = {}
         for frobenius_idx in range(8):  # g0からg7まで
             group_key = f'g{frobenius_idx}'
@@ -362,17 +426,17 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
         if max_x is None:
             max_x = self.auto_detect_max_x(case_id)
         
-        print(f"Case {case_id}: 並列グラフ作成開始 (m_ρ0 = {m_rho0}, max_x = {max_x:,}, プロセス数 = {self.num_processes})")
+        print(f"Case {case_id}: グラフ作成開始 (m_ρ0 = {m_rho0}, max_x = {max_x:,}, プロセス数 = {self.num_processes})")
         
         # 適応的サンプリング点を生成
         sample_points = self.generate_adaptive_sample_points(max_x, target_points)
         
-        # 全体のπ_{1/2}(x)を並列計算
-        print(f"  全体のπ_{1/2}(x)を並列計算中...")
+        # 全体のπ_{1/2}(x)を計算
+        print(f"  全体のπ_{1/2}(x)を計算中...")
         x_total, pi_total = self.compute_total_pi_half_parallel(frobenius_data, sample_points)
         
-        # フロベニウス元ごとのπ_{1/2}(x; σ)を並列計算
-        print(f"  フロベニウス元ごとの並列計算中...")
+        # フロベニウス元ごとのπ_{1/2}(x; σ)を計算
+        print(f"  フロベニウス元ごとの計算中...")
         pi_by_frobenius = self.compute_pi_half_by_frobenius_parallel(frobenius_data, sample_points)
         
         # 5つのグラフを作成
@@ -454,15 +518,16 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
         plt.savefig(output_filename, dpi=200, bbox_inches='tight')
         plt.close()  # メモリ解放
         
-        print(f"Case {case_id}: 並列グラフを保存しました -> {output_filename}")
+        print(f"Case {case_id}: グラフを保存しました -> {output_filename}")
     
-    def analyze_all_cases(self, max_x=None, target_points=1000):
+    def analyze_all_cases(self, max_x=None, target_points=1000, output_dir="graphs"):
         """
         全ケースを解析してグラフを作成（並列処理版）
         
         Args:
             max_x: 最大値 (Noneの場合は自動検出)
             target_points: 目標サンプリング点数
+            output_dir: 出力ディレクトリ
         """
         print("全ケースのグラフ作成を開始（並列処理版）")
         print("=" * 50)
@@ -472,7 +537,6 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
             max_x = self.auto_detect_max_x()
         
         # 出力ディレクトリを作成
-        output_dir = "graphs"
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
         
@@ -541,39 +605,137 @@ class BiasAnalyzer(BiasAnalyzer):  # 継承して追加メソッドを定義
             group_name = ['1', '-1', 'i', 'j', 'k', '-i', '-j', '-k'][i]
             print(f"  g{i} ({group_name}): {count} primes ({percentage:.2f}%)")
 
+def parse_arguments():
+    """
+    コマンドライン引数を解析
+    
+    Returns:
+        解析された引数
+    """
+    parser = argparse.ArgumentParser(
+        description="グラフ描画プログラム（並列処理版）",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+使用例:
+  # デフォルト設定で実行
+  python graph_plotter.py
+  
+  # プロセス数を指定
+  python graph_plotter.py --processes 4
+  
+  # 特定のケースのみを処理
+  python graph_plotter.py --case 1 --processes 2
+  
+  # 最大x値とサンプル点数を指定
+  python graph_plotter.py --max-x 100000 --target-points 500 --processes 6
+        """
+    )
+    
+    parser.add_argument(
+        '--processes', '-p',
+        type=int,
+        default=None,
+        help=f'使用するプロセス数を指定 (デフォルト: auto, 最大: {mp.cpu_count()})'
+    )
+    
+    parser.add_argument(
+        '--case', '-c',
+        type=int,
+        choices=range(1, 14),
+        help='特定のケースのみを処理 (1-13)'
+    )
+    
+    parser.add_argument(
+        '--max-x', '-x',
+        type=int,
+        help='最大x値を指定 (デフォルト: 自動検出)'
+    )
+    
+    parser.add_argument(
+        '--target-points', '-t',
+        type=int,
+        default=1000,
+        help='目標サンプリング点数 (デフォルト: 1000)'
+    )
+    
+    parser.add_argument(
+        '--data-dir', '-d',
+        type=str,
+        default="frobenius_data",
+        help='フロベニウスデータのディレクトリ (デフォルト: frobenius_data)'
+    )
+    
+    parser.add_argument(
+        '--output-dir', '-o',
+        type=str,
+        default="graphs",
+        help='出力ディレクトリ (デフォルト: graphs)'
+    )
+    
+    parser.add_argument(
+        '--verbose', '-v',
+        action='store_true',
+        help='詳細な情報を表示'
+    )
+    
+    return parser.parse_args()
+
 def main():
     """
     メイン実行関数
     """
+    # コマンドライン引数を解析
+    args = parse_arguments()
+    
     print("グラフ描画プログラム開始（並列処理版）")
     print("=" * 50)
     
     # 解析器を初期化（並列処理対応）
-    analyzer = BiasAnalyzer()
+    analyzer = BiasAnalyzer(
+        data_dir=args.data_dir,
+        num_processes=args.processes
+    )
     
-    # 設定（並列処理版）
-    max_x = None  # 自動検出を使用
-    target_points = 1000  # 適応的サンプリングの目標点数
-    
+    # 設定を表示
     print(f"設定:")
-    print(f"  最大値: 自動検出")
-    print(f"  目標サンプル点数: {target_points}")
-    print(f"  適応的サンプリング: 有効")
-    print(f"  並列処理: 有効 ({analyzer.num_processes}プロセス)")
+    print(f"  データディレクトリ: {args.data_dir}")
+    print(f"  出力ディレクトリ: {args.output_dir}")
+    print(f"  プロセス数: {analyzer.num_processes}")
+    print(f"  最大x値: {args.max_x if args.max_x else '自動検出'}")
+    print(f"  目標サンプル点数: {args.target_points}")
+    print(f"  詳細表示: {'有効' if args.verbose else '無効'}")
     print()
     
-    # 全ケースを処理
-    analyzer.analyze_all_cases(max_x, target_points)
-    
-    # 各ケースの統計情報を表示
-    print("\n" + "=" * 50)
-    print("統計情報:")
-    
-    for case_id in range(1, 14):
-        try:
-            analyzer.print_statistics(case_id)
-        except Exception as e:
-            print(f"Case {case_id}: 統計情報の取得に失敗 -> {e}")
+    # 特定のケースを処理
+    if args.case:
+        print(f"Case {args.case} のみを処理します...")
+        analyzer.plot_bias_graphs(
+            case_id=args.case,
+            max_x=args.max_x,
+            output_dir=args.output_dir,
+            target_points=args.target_points
+        )
+        
+        if args.verbose:
+            analyzer.print_statistics(args.case)
+    else:
+        # 全ケースを処理
+        analyzer.analyze_all_cases(
+            max_x=args.max_x,
+            target_points=args.target_points,
+            output_dir=args.output_dir
+        )
+        
+        # 統計情報を表示
+        if args.verbose:
+            print("\n" + "=" * 50)
+            print("統計情報:")
+            
+            for case_id in range(1, 14):
+                try:
+                    analyzer.print_statistics(case_id)
+                except Exception as e:
+                    print(f"Case {case_id}: 統計情報の取得に失敗 -> {e}")
 
 if __name__ == "__main__":
     main()
