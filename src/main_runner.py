@@ -43,15 +43,17 @@ except ImportError as e:
     sys.exit(1)
 
 class QuaternionResearch:
-    def __init__(self, max_prime=10**6, num_processes=None):
+    def __init__(self, max_prime=10**6, num_processes=None, graph_max_x=None):
         """
         Quaternion拡大研究の統合クラス
         
         Args:
             max_prime: 計算する最大の素数
             num_processes: 使用するプロセス数
+            graph_max_x: グラフの最大x値 (Noneの場合は自動検出)
         """
         self.max_prime = max_prime
+        self.graph_max_x = graph_max_x  # 新規追加
         self.num_processes = num_processes or mp.cpu_count()
         self.data_dir = "frobenius_data"
         self.graph_dir = "graphs"
@@ -64,6 +66,7 @@ class QuaternionResearch:
         print(f"Quaternion拡大における素数の偏り研究")
         print(f"設定:")
         print(f"  最大素数: {self.max_prime:,}")
+        print(f"  グラフ最大x値: {'自動検出' if self.graph_max_x is None else f'{self.graph_max_x:,}'}")
         print(f"  プロセス数: {self.num_processes}")
         print(f"  データディレクトリ: {self.data_dir}")
         print(f"  グラフディレクトリ: {self.graph_dir}")
@@ -158,7 +161,7 @@ class QuaternionResearch:
     
     def plot_graphs_all_cases(self):
         """
-        全ケースのグラフを描画
+        全ケースのグラフを描画（改善版）
         """
         print("=" * 60)
         print("全ケースのグラフ描画を開始")
@@ -167,7 +170,8 @@ class QuaternionResearch:
         analyzer = BiasAnalyzer(self.data_dir)
         
         try:
-            analyzer.analyze_all_cases(max_x=min(self.max_prime, 10**5))
+            # 改善版: 自動検出またはユーザー指定のmax_xを使用
+            analyzer.analyze_all_cases(max_x=self.graph_max_x)
             print("全ケースのグラフ描画が完了しました！")
         except Exception as e:
             print(f"グラフ描画中にエラーが発生: {e}")
@@ -176,7 +180,7 @@ class QuaternionResearch:
     
     def plot_graphs_single_case(self, case_id):
         """
-        単一ケースのグラフを描画
+        単一ケースのグラフを描画（改善版）
         
         Args:
             case_id: ケースID (1-13)
@@ -190,7 +194,8 @@ class QuaternionResearch:
         analyzer = BiasAnalyzer(self.data_dir)
         
         try:
-            analyzer.plot_bias_graphs(case_id, max_x=min(self.max_prime, 10**5), output_dir=self.graph_dir)
+            # 改善版: 自動検出またはユーザー指定のmax_xを使用
+            analyzer.plot_bias_graphs(case_id, max_x=self.graph_max_x, output_dir=self.graph_dir)
             analyzer.print_statistics(case_id)
             print(f"Case {case_id} のグラフ描画が完了しました！")
         except Exception as e:
@@ -223,18 +228,50 @@ class QuaternionResearch:
         print("データファイルの存在チェック:")
         print("-" * 40)
         
+        max_detected_prime = 0
+        
         for case_id in range(1, 14):
             filename = f"{self.data_dir}/case_{case_id:02d}_frobenius.json"
             if os.path.exists(filename):
                 try:
                     with open(filename, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                    num_primes = len(data.get('frobenius_elements', {}))
-                    print(f"Case {case_id:2d}: ✓ ({num_primes:,} primes)")
-                except:
-                    print(f"Case {case_id:2d}: ✗ (ファイルは存在するが読み込めません)")
+                    frobenius_elements = data.get('frobenius_elements', {})
+                    num_primes = len(frobenius_elements)
+                    
+                    # 最大素数を取得
+                    if frobenius_elements:
+                        case_max_prime = max(int(p) for p in frobenius_elements.keys())
+                        max_detected_prime = max(max_detected_prime, case_max_prime)
+                        print(f"Case {case_id:2d}: ✓ ({num_primes:,} primes, max: {case_max_prime:,})")
+                    else:
+                        print(f"Case {case_id:2d}: ✓ ({num_primes:,} primes)")
+                        
+                except Exception as e:
+                    print(f"Case {case_id:2d}: ✗ (ファイルは存在するが読み込めません: {e})")
             else:
                 print(f"Case {case_id:2d}: ✗ (ファイルが存在しません)")
+        
+        if max_detected_prime > 0:
+            print(f"\n検出された最大素数: {max_detected_prime:,}")
+            print(f"推奨グラフ最大x値: {self._suggest_graph_max_x(max_detected_prime):,}")
+    
+    def _suggest_graph_max_x(self, max_prime):
+        """
+        最大素数から推奨グラフ最大x値を計算
+        """
+        if max_prime < 10**3:
+            return 10**3
+        elif max_prime < 10**4:
+            return 10**4
+        elif max_prime < 10**5:
+            return 10**5
+        elif max_prime < 10**6:
+            return 10**6
+        elif max_prime < 10**7:
+            return 10**7
+        else:
+            return 10**8
 
 def main():
     """
@@ -262,6 +299,8 @@ def main():
     # 設定オプション
     parser.add_argument('--max-prime', type=int, default=10**6,
                         help='計算する最大の素数 (デフォルト: 1,000,000)')
+    parser.add_argument('--graph-max-x', type=int, 
+                        help='グラフの最大x値 (指定しない場合は自動検出)')
     parser.add_argument('--processes', type=int, 
                         help='使用するプロセス数 (デフォルト: 自動)')
     
@@ -275,7 +314,8 @@ def main():
     # 研究クラスを初期化
     research = QuaternionResearch(
         max_prime=args.max_prime,
-        num_processes=args.processes
+        num_processes=args.processes,
+        graph_max_x=args.graph_max_x  # 新規追加
     )
     
     # データファイルチェック
